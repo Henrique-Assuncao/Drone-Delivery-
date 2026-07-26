@@ -103,6 +103,7 @@ http://127.0.0.1:5173
 ```
 
 Durante o desenvolvimento, o Vite encaminha chamadas `/api` e `/internal` para a API Spring em `http://localhost:8080`.
+Endpoints internos sob `/internal` exigem o header `X-Internal-Api-Key`. O valor local padrao e `dev-internal-key`, configurado em `drone.internal.api-key`; no backend ele pode ser alterado com `DRONE_INTERNAL_API_KEY` e no dashboard com `VITE_INTERNAL_API_KEY`.
 
 O botao `Recriar demo` chama `POST /internal/demo/reset-and-seed?confirmation=RESET_DEMO_DATA`.
 Essa acao exige confirmacao no dashboard e limpa os dados operacionais atuais antes de recriar o cenario demo.
@@ -117,42 +118,44 @@ O script inicia o PostgreSQL com Docker Compose, executa o backend Spring e abre
 
 O dashboard atual possui:
 
-- navegacao entre experiencia Admin e experiencia Cliente;
-- visao geral com indicadores de drones, pedidos, viagens, recarga, tempo medio e avaliacoes;
-- indicador de disponibilidade da API Spring, com bloqueio de acoes operacionais quando o backend estiver offline;
-- botao para recriar um cenario demo com confirmacao, limpando dados operacionais e gerando drones, pedidos, obstaculo, avaliacao e planejamento otimizado;
-- alertas operacionais para reatribuicao, nao alocacao, retorno antecipado e bateria baixa;
+- navegação entre experiência Admin e experiência Cliente;
+- visão geral com indicadores de drones, pedidos, viagens, recarga, tempo médio e avaliações;
+- relatório mensal de produtividade com alternância do mês exibido;
+- indicador de disponibilidade da API Spring, com bloqueio de ações operacionais quando o backend estiver offline;
+- botão para recriar um cenário demo com confirmação, limpando dados operacionais e gerando drones, pedidos, obstáculo, avaliação e planejamento otimizado;
+- alertas operacionais para reatribuição, não alocação, retorno antecipado e bateria baixa;
 - jornada operacional guiada do ciclo completo, do cadastro ao encerramento da viagem;
 - tabelas consultivas de drones, pedidos e viagens;
 - abas, busca textual e filtro por status nas tabelas operacionais;
-- status de drones, pedidos e viagens exibidos em portugues no dashboard;
-- descricoes por tooltip nos botoes de acao da consulta operacional;
-- visao detalhada de viagem com rota, progresso por entrega e historico de telemetria;
-- mapa 2D com base, pedidos, obstaculos, marcador do drone em movimento, modo de viagem selecionada ou todas as viagens, cores por viagem, setas de direcao e pontos numerados pela ordem da rota;
-- simulacao automatica de viagens planejadas ou em rota, com consumo de bateria, entrega automatica dos pontos alcancados, conclusao da rota ou retorno antecipado;
-- visao dedicada de filas de entrega, reatribuicao e recarga;
+- status de drones, pedidos e viagens exibidos em português no dashboard;
+- descrições por tooltip nos botões de ação da consulta operacional;
+- visão detalhada de viagem com rota, progresso por entrega e histórico de telemetria;
+- mapa 2D com base, pedidos, obstáculos, marcador do drone em movimento, modo de viagem selecionada ou todas as viagens, cores por viagem, setas de direção e pontos numerados pela ordem da rota;
+- simulação automática de viagens planejadas ou em rota, com consumo de bateria, solicitação de disponibilidade do cliente na aproximação, parada em pontos alcançados para confirmação do cliente, prazo de 1 minuto para informar o código, conclusão da rota ou retorno antecipado;
+- visão dedicada de filas de entrega, reatribuição e recarga;
 - cadastro operacional de drones e pedidos;
-- acionamento de planejamento persistido com opcao de rota otimizada;
-- gestao de obstaculos circulares com cadastro, listagem e desativacao;
-- cadastro e consulta de avaliacoes com estrelas, titulo e feedback;
-- acoes operacionais de drones: marcar indisponivel, marcar disponivel, enviar para recarga e concluir recarga;
-- acoes operacionais de viagens: iniciar, registrar proxima entrega da rota, enviar telemetria de bateria, concluir e cancelar.
-- tela Cliente com solicitacao limitada de entrega por peso e coordenadas, acompanhamento por ID ou codigo, mapa da rota vinculada e avaliacoes publicas.
+- acionamento de planejamento persistido com opção de rota otimizada;
+- gestão de obstáculos circulares com cadastro, listagem e desativação;
+- cadastro e consulta de avaliações com estrelas, título e feedback;
+- ações operacionais de drones: marcar indisponível, marcar disponível, enviar para recarga, concluir recarga e excluir drone;
+- painel de tratamento de pedidos não alocados para cancelar com justificativa para o cliente ou reenviar para planejamento;
+- ações operacionais de viagens: iniciar, aguardar confirmação de entrega pelo cliente, enviar telemetria de bateria, concluir e cancelar.
+- tela Cliente com cadastro, login, pedidos vinculados à conta, solicitação limitada de entrega por peso, coordenadas e horário confirmado, aba `Meus pedidos` para alternar pedidos da conta, acompanhamento por ID ou código, confirmação de disponibilidade na aproximação, confirmação de recebimento com o próprio código de rastreio, aviso central com som quando o drone se aproxima, mensagens de pacote não alocado/não entregue/cancelado, mapa da rota vinculada e avaliações públicas.
 
 ## Contrato da API
 
-O contrato HTTP consolidado esta em [`API.md`](API.md).
-O README mantem exemplos de uso manual; o `API.md` concentra endpoints, payloads, respostas e erros.
+O contrato HTTP consolidado está em [`API.md`](API.md).
+O README mantém exemplos de uso manual; o `API.md` concentra endpoints, payloads, respostas e erros.
 
-## Estrutura do codigo
+## Estrutura do código
 
-O codigo principal fica organizado em pacotes por responsabilidade:
+O código principal fica organizado em pacotes por responsabilidade:
 
-- `com.example.drone`: classe de bootstrap da aplicacao Spring.
+- `com.example.drone`: classe de bootstrap da aplicação Spring.
 - `com.example.drone.controller`: controllers REST e tratamento global de erros.
-- `com.example.drone.domain`: modelos de dominio, status, calculos de rota e planejamento.
-- `com.example.drone.service`: servicos de aplicacao e transicoes operacionais.
-- `com.example.drone.persistence`: entidades JPA, repositories e adapters de persistencia.
+- `com.example.drone.domain`: modelos de domínio, status, cálculos de rota e planejamento.
+- `com.example.drone.service`: serviços de aplicação e transições operacionais.
+- `com.example.drone.persistence`: entidades JPA, repositories e adapters de persistência.
 - `com.example.drone.exception`: excecoes usadas pelas regras e pela API.
 
 Para executar apenas os cenarios do planejador de viagens:
@@ -177,7 +180,7 @@ mvn test
 Resultado verificado:
 
 - `BUILD SUCCESS`
-- `Tests run: 190, Failures: 0, Errors: 0, Skipped: 0`
+- `Tests run: 218, Failures: 0, Errors: 0, Skipped: 0`
 
 ## Exemplo de entrada e saida
 
@@ -206,7 +209,7 @@ Entrada JSON:
 
 Os campos de bateria sao opcionais no cadastro. Quando omitidos, a aplicacao usa os valores padrao mostrados no exemplo.
 
-Saida JSON:
+Saída JSON:
 
 ```json
 {
@@ -270,7 +273,7 @@ Status aceitos:
 - `UNAVAILABLE`;
 - `CHARGING`.
 
-Filtro de status invalido retorna HTTP `400`:
+Filtro de status inválido retorna HTTP `400`:
 
 ```json
 {
@@ -305,7 +308,7 @@ POST http://localhost:8080/api/drones/1/unavailable
 
 Esse endpoint marca um drone `AVAILABLE` como `UNAVAILABLE`.
 
-Saida JSON:
+Saída JSON:
 
 ```json
 {
@@ -330,7 +333,7 @@ POST http://localhost:8080/api/drones/1/available
 
 Esse endpoint marca um drone `UNAVAILABLE` como `AVAILABLE`.
 
-Saida JSON:
+Saída JSON:
 
 ```json
 {
@@ -350,10 +353,43 @@ Saida JSON:
 Regras de erro:
 
 - drone inexistente retorna HTTP `404` com `drone not found`;
-- marcar como indisponivel exige status atual `AVAILABLE`;
-- marcar como disponivel exige status atual `UNAVAILABLE`;
-- drone `IN_ROUTE` nao pode ser alterado manualmente;
-- transicao invalida retorna HTTP `400`.
+- marcar como indisponível exige status atual `AVAILABLE`;
+- marcar como disponível exige status atual `UNAVAILABLE`;
+- drone `IN_ROUTE` não pode ser alterado manualmente;
+- transição inválida retorna HTTP `400`.
+
+### Exclusão de drone
+
+Endpoint:
+
+```text
+DELETE http://localhost:8080/api/drones/1
+```
+
+Esse endpoint exclui um drone que não esteja em rota e ainda não possua viagens vinculadas.
+
+Saída JSON:
+
+```json
+{
+  "id": 1,
+  "identifier": "DRONE-1",
+  "maxWeightCapacity": 10.0,
+  "maxRange": 20.0,
+  "status": "AVAILABLE",
+  "batteryLevel": 100.0,
+  "batteryConsumptionPerDistanceUnit": 1.0,
+  "minimumReturnBattery": 20.0,
+  "speed": 1.0,
+  "chargingRate": 10.0
+}
+```
+
+Regras de erro:
+
+- drone inexistente retorna HTTP `404` com `drone not found`;
+- drone em rota retorna HTTP `400` com `drone must not be IN_ROUTE to delete`;
+- drone com viagens vinculadas retorna HTTP `400` com `drone with trips cannot be deleted`.
 
 ### Consulta interna de bateria
 
@@ -363,7 +399,7 @@ Endpoint:
 GET http://localhost:8080/internal/drones/1/battery
 ```
 
-Saida JSON:
+Saída JSON:
 
 ```json
 {
@@ -389,7 +425,7 @@ POST http://localhost:8080/api/drones/1/recharge
 
 Esse endpoint coloca um drone `AVAILABLE` com bateria abaixo de `100.0` na fila de recarga.
 
-Saida JSON:
+Saída JSON:
 
 ```json
 {
@@ -464,7 +500,8 @@ Entrada JSON:
     "y": 4.0
   },
   "weight": 4.0,
-  "priority": "HIGH"
+  "priority": "HIGH",
+  "confirmedDeliveryTime": "2026-07-26T18:30:00Z"
 }
 ```
 
@@ -481,12 +518,15 @@ Saida JSON:
   "weight": 4.0,
   "priority": "HIGH",
   "status": "REQUESTED",
-  "queuedAt": "2026-07-25T20:00:00Z"
+  "queuedAt": "2026-07-25T20:00:00Z",
+  "confirmedDeliveryTime": "2026-07-26T18:30:00Z",
+  "deliveryConfirmationCode": "ORDER-1"
 }
 ```
 
-Cadastro valido retorna HTTP `201`.
-Pedidos cadastrados pela API iniciam com status `REQUESTED`.
+Cadastro válido retorna HTTP `201`.
+Pedidos cadastrados pela API iniciam com status `REQUESTED` e precisam informar `confirmedDeliveryTime`.
+O cadastro retorna `deliveryConfirmationCode` com o mesmo valor do rastreio para o cliente acompanhar e confirmar o recebimento depois; consultas de pedido não exibem esse campo.
 Identificador duplicado retorna HTTP `409`.
 
 ### Consulta de pedidos
@@ -511,7 +551,8 @@ Saida JSON:
     "weight": 4.0,
     "priority": "HIGH",
     "status": "REQUESTED",
-    "queuedAt": "2026-07-25T20:00:00Z"
+    "queuedAt": "2026-07-25T20:00:00Z",
+    "confirmedDeliveryTime": "2026-07-26T18:30:00Z"
   }
 ]
 ```
@@ -533,13 +574,45 @@ GET http://localhost:8080/api/orders/1
 Esse endpoint retorna um pedido pelo `id`.
 Pedido inexistente retorna HTTP `404` com `order not found`.
 
-Filtro de status invalido retorna HTTP `400`:
+Filtro de status inválido retorna HTTP `400`:
 
 ```json
 {
-  "message": "status must be one of REQUESTED, ALLOCATED, IN_ROUTE, PENDING_REASSIGNMENT, DELIVERED, CANCELLED, UNALLOCATED"
+  "message": "status must be one of REQUESTED, ALLOCATED, IN_ROUTE, PENDING_REASSIGNMENT, DELIVERED, NOT_DELIVERED, CANCELLED, UNALLOCATED"
 }
 ```
+
+### Cancelamento e realocação de pedido não alocado
+
+Endpoint:
+
+```text
+POST http://localhost:8080/api/orders/1/cancel
+```
+
+Entrada JSON:
+
+```json
+{
+  "reason": "Endereço fora da área atendida pela frota disponível."
+}
+```
+
+Esse endpoint cancela apenas pedidos `UNALLOCATED` e grava a justificativa em `statusReason`, exibida para admin e cliente.
+
+Endpoint:
+
+```text
+POST http://localhost:8080/api/orders/1/requeue
+```
+
+Esse endpoint retorna apenas pedidos `UNALLOCATED` para `REQUESTED`, permitindo nova tentativa de planejamento.
+
+Regras de erro:
+
+- pedido inexistente retorna HTTP `404` com `order not found`;
+- cancelamento exige justificativa não vazia;
+- pedidos que não estejam `UNALLOCATED` retornam HTTP `400`.
 
 ### Fila operacional de pedidos
 
@@ -550,7 +623,7 @@ GET http://localhost:8080/api/delivery-queue
 ```
 
 Esse endpoint lista pedidos `REQUESTED` e `PENDING_REASSIGNMENT` na ordem de entrada na fila operacional.
-A fila e ordenada por `queuedAt` e, em caso de empate, por `id`.
+A fila é ordenada por `queuedAt` e, em caso de empate, por `id`.
 
 Saida JSON:
 
@@ -571,7 +644,7 @@ Saida JSON:
 ]
 ```
 
-### Avaliacoes do servico
+### Avaliações do serviço
 
 Endpoint:
 
@@ -589,7 +662,7 @@ Entrada JSON:
 }
 ```
 
-Saida JSON:
+Saída JSON:
 
 ```json
 {
@@ -607,7 +680,7 @@ Endpoint:
 GET http://localhost:8080/api/reviews
 ```
 
-Esse endpoint lista avaliacoes em ordem crescente de `id`.
+Esse endpoint lista avaliações em ordem crescente de `id`.
 
 Endpoint:
 
@@ -615,12 +688,12 @@ Endpoint:
 GET http://localhost:8080/api/reviews/1
 ```
 
-Esse endpoint retorna uma avaliacao pelo `id`.
-Avaliacao inexistente retorna HTTP `404` com `review not found`.
+Esse endpoint retorna uma avaliação pelo `id`.
+Avaliação inexistente retorna HTTP `404` com `review not found`.
 
-Avaliacoes aceitam `stars` de 1 a 5, `title` obrigatorio e `feedback` obrigatorio.
+Avaliações aceitam `stars` de 1 a 5, `title` obrigatório e `feedback` obrigatório.
 
-### Obstaculos
+### Obstáculos
 
 Endpoint:
 
@@ -721,9 +794,9 @@ Saida JSON:
 }
 ```
 
-`estimatedDuration` e calculado por `totalDistance / speed` do drone associado.
-`estimatedDeliveryTime` e o tempo acumulado ate cada posicao da rota, e `averageDeliveryTime` e a media desses tempos por pacote.
-Quando ha obstaculos ativos, `totalDistance`, `estimatedDuration`, alcance e bateria usam a distancia ajustada pelo desvio.
+`estimatedDuration` é calculado por `totalDistance / speed` do drone associado.
+`estimatedDeliveryTime` é o tempo acumulado até cada posição da rota, e `averageDeliveryTime` é a média desses tempos por pacote.
+Quando há obstáculos ativos, `totalDistance`, `estimatedDuration`, alcance e bateria usam a distância ajustada pelo desvio.
 
 Exemplo de pedido impossivel:
 
@@ -734,7 +807,7 @@ Exemplo de pedido impossivel:
     {
       "orderId": 1,
       "orderIdentifier": "ORDER-1",
-      "reason": "order exceeds max drone weight capacity"
+      "reason": "Pedido excede a capacidade máxima de peso dos drones disponíveis."
     }
   ]
 }
@@ -742,16 +815,16 @@ Exemplo de pedido impossivel:
 
 Motivos possíveis para pedidos não alocados:
 
-- `order exceeds max drone weight capacity`;
-- `order exceeds max drone range`;
-- `order exceeds max drone weight capacity and max drone range`;
-- `order exceeds drone battery for complete trip and safe return`;
-- `order cannot be served by any drone`.
+- `Pedido excede a capacidade máxima de peso dos drones disponíveis.`
+- `Pedido excede o alcance máximo dos drones disponíveis.`
+- `Pedido excede a capacidade máxima de peso e o alcance máximo dos drones disponíveis.`
+- `Pedido exige mais bateria do que a frota disponível possui para concluir a rota e retornar em segurança.`
+- `Pedido não pode ser atendido por nenhum drone no planejamento atual.`
 
 Pedidos alocados passam para `ALLOCATED`.
-Pedidos impossiveis passam para `UNALLOCATED`.
+Pedidos impossíveis passam para `UNALLOCATED`.
 Viagens criadas iniciam como `PLANNED`.
-Parametro `optimizeRoute` invalido retorna HTTP `400` com `optimizeRoute is invalid`.
+Parâmetro `optimizeRoute` inválido retorna HTTP `400` com `optimizeRoute is invalid`.
 
 ### Consulta de viagens
 
@@ -866,7 +939,23 @@ Erros esperados:
 - drone que nao esteja `AVAILABLE` retorna HTTP `400`;
 - drone sem bateria suficiente retorna HTTP `400`.
 
-### Entrega de posicao da rota
+### Entrega de posição da rota
+
+Endpoint:
+
+```text
+POST http://localhost:8080/api/trips/1/route/0/availability
+```
+
+Entrada JSON:
+
+```json
+{
+  "available": true
+}
+```
+
+Esse endpoint registra se o cliente está disponível para receber o pacote quando o drone está chegando. Com `available: true`, a confirmação final por código fica liberada quando o drone parar no endereço. Com `available: false`, ou se o cliente não responder dentro do prazo da notificação, a viagem passa para `RETURNED_EARLY` e o pacote atual recebe a tag `NOT_DELIVERED` com motivo em português.
 
 Endpoint:
 
@@ -874,11 +963,22 @@ Endpoint:
 POST http://localhost:8080/api/trips/1/route/0/deliver
 ```
 
-Esse endpoint registra que uma posicao da rota foi entregue durante uma viagem `IN_ROUTE`.
-A entrega deve seguir a ordem da rota: a posicao `1` so pode ser marcada depois da posicao `0`.
+Entrada JSON:
+
+```json
+{
+  "confirmationCode": "ORDER-1"
+}
+```
+
+Esse endpoint registra que uma posição da rota foi entregue durante uma viagem `IN_ROUTE`, usando o código de rastreio digitado pelo cliente na aba Cliente.
+A entrega deve seguir a ordem da rota: a posição `1` só pode ser marcada depois da posição `0`.
+O cliente precisa ter confirmado disponibilidade para receber o pacote.
+O drone precisa ter alcançado a posição da rota antes da confirmação.
+Depois que o drone chega ao endereço e a disponibilidade está confirmada, o cliente tem 1 minuto para informar o código. Se o prazo expirar, o pacote é marcado como `NOT_DELIVERED`, a posição fica resolvida como falha e o drone segue a rota levando a encomenda de volta para a base.
 Ao registrar a entrega, o item da rota recebe `deliveredAt` e o pedido associado passa para `DELIVERED`.
 
-Saida JSON:
+Saída JSON:
 
 ```json
 {
@@ -910,11 +1010,14 @@ Saida JSON:
 Erros esperados:
 
 - viagem inexistente retorna HTTP `404` com `trip not found`;
-- posicao inexistente retorna HTTP `404` com `trip route position not found`;
-- viagem que nao esteja `IN_ROUTE` retorna HTTP `400`;
-- posicao negativa retorna HTTP `400`;
-- posicao fora de ordem retorna HTTP `400`;
-- posicao ja entregue retorna HTTP `400`.
+- posição inexistente retorna HTTP `404` com `trip route position not found`;
+- viagem que não esteja `IN_ROUTE` retorna HTTP `400`;
+- corpo ausente retorna HTTP `400`;
+- código de confirmação ausente ou inválido retorna HTTP `400`;
+- drone que ainda não alcançou a posição retorna HTTP `400`;
+- posição negativa retorna HTTP `400`;
+- posição fora de ordem retorna HTTP `400`;
+- posição já entregue retorna HTTP `400`.
 
 ### Telemetria de viagem
 
@@ -999,15 +1102,16 @@ Saida JSON:
 Ao concluir uma viagem:
 
 - a viagem deve estar `IN_ROUTE`;
-- se a bateria atual ainda cobre a rota salva e a reserva minima de retorno, a viagem passa para `COMPLETED`;
-- nesse fluxo completo, o drone associado volta para `AVAILABLE` e os pedidos associados passam para `DELIVERED`;
+- se a bateria atual ainda cobre a rota salva e a reserva mínima de retorno, a viagem passa para `COMPLETED` somente depois que todas as posições da rota estiverem resolvidas;
+- nesse fluxo completo, o drone associado volta para `AVAILABLE` e os pedidos já foram marcados como `DELIVERED` pelas confirmações de recebimento;
 - se a bateria atual nao cobre a rota salva, o retorno antecipado usa o progresso persistido da rota;
 - no retorno antecipado, a viagem passa para `RETURNED_EARLY`, posicoes ja reportadas como entregues permanecem `DELIVERED`, pedidos restantes passam para `PENDING_REASSIGNMENT` e o drone entra em `CHARGING`.
 
 Erros esperados:
 
 - viagem inexistente retorna HTTP `404` com `trip not found`;
-- viagem que nao esteja `IN_ROUTE` retorna HTTP `400`.
+- viagem que não esteja `IN_ROUTE` retorna HTTP `400`;
+- viagem com posições de rota ainda sem confirmação retorna HTTP `400`.
 
 ### Cancelamento de viagem
 
@@ -1056,6 +1160,7 @@ Erros esperados:
 - Drones cadastrados pela API iniciam com status `AVAILABLE`.
 - Drones cadastrados sem dados de bateria usam valores padrao.
 - A consulta interna de bateria fica em `GET /internal/drones/{id}/battery`.
+- Endpoints internos sob `/internal` exigem o header `X-Internal-Api-Key`.
 - Drones em fila de recarga usam status `CHARGING`.
 - A fila de recarga fica em `GET /api/recharge-queue`.
 - Drones podem entrar manualmente na fila de recarga com `POST /api/drones/{id}/recharge`.
@@ -1070,15 +1175,15 @@ Erros esperados:
 - O identificador do pedido deve ser unico.
 - Pedidos cadastrados pela API iniciam com status `REQUESTED`.
 - As consultas de pedidos retornam resultados em ordem crescente de `id`.
-- A consulta de pedido por `id` retorna `404` quando o pedido nao existe.
-- Pedidos `REQUESTED` e `PENDING_REASSIGNMENT` compoem a fila operacional de entrega.
+- A consulta de pedido por `id` retorna `404` quando o pedido não existe.
+- Pedidos `REQUESTED` e `PENDING_REASSIGNMENT` compõem a fila operacional de entrega.
 - A fila operacional de pedidos fica em `GET /api/delivery-queue`.
-- A fila operacional e ordenada por `queuedAt` e `id`.
-- Avaliacoes do servico ficam em `POST /api/reviews`, `GET /api/reviews` e `GET /api/reviews/{id}`.
-- Avaliacoes aceitam estrelas de 1 a 5, titulo e feedback do cliente.
-- Obstaculos circulares ativos ficam em `GET /api/obstacles`.
-- Obstaculos podem ser cadastrados com `POST /api/obstacles`.
-- Obstaculos podem ser desativados com `DELETE /api/obstacles/{id}`.
+- A fila operacional é ordenada por `queuedAt` e `id`.
+- Avaliações do serviço ficam em `POST /api/reviews`, `GET /api/reviews` e `GET /api/reviews/{id}`.
+- Avaliações aceitam estrelas de 1 a 5, título e feedback do cliente.
+- Obstáculos circulares ativos ficam em `GET /api/obstacles`.
+- Obstáculos podem ser cadastrados com `POST /api/obstacles`.
+- Obstáculos podem ser desativados com `DELETE /api/obstacles/{id}`.
 - Filtros de status invalidos retornam HTTP `400` com os valores aceitos.
 - O planejamento operacional usa apenas drones `AVAILABLE` e pedidos `REQUESTED` ou `PENDING_REASSIGNMENT` salvos.
 - O planejamento usa `optimizeRoute=true` por padrao.
@@ -1089,26 +1194,28 @@ Erros esperados:
 - Viagens criadas pelo planejamento iniciam com status `PLANNED`.
 - As consultas de viagens retornam resultados em ordem crescente de `id`.
 - As consultas de viagens podem ser filtradas por status.
-- A consulta de viagem por `id` retorna `404` quando a viagem nao existe.
-- A duracao estimada da viagem e calculada por `totalDistance / speed` do drone associado.
-- O tempo medio ate entrega fica em `averageDeliveryTime`, calculado pela media dos tempos acumulados por pacote.
-- O inicio de uma viagem exige status `PLANNED` e drone `AVAILABLE`.
+- A consulta de viagem por `id` retorna `404` quando a viagem não existe.
+- A duração estimada da viagem é calculada por `totalDistance / speed` do drone associado.
+- O tempo médio até entrega fica em `averageDeliveryTime`, calculado pela média dos tempos acumulados por pacote.
+- O início de uma viagem exige status `PLANNED` e drone `AVAILABLE`.
 - Ao iniciar uma viagem, viagem, drone e pedidos passam para `IN_ROUTE`.
 - A telemetria de viagem fica em `POST /api/trips/{id}/telemetry`.
 - A telemetria de viagem atualiza a bateria atual do drone associado.
-- A telemetria de viagem e persistida em historico consultavel por `GET /api/trips/{id}/telemetry`.
-- Entregas durante uma viagem sao reportadas por posicao da rota com `POST /api/trips/{id}/route/{routePosition}/deliver`.
-- A simulacao de viagem fica em `GET /api/trips/{id}/simulation` e `POST /api/trips/{id}/simulation/tick`.
-- A simulacao automatica inicia viagens planejadas, move o drone, consome bateria, registra entregas alcancadas e conclui a viagem quando a rota termina.
-- Se uma telemetria deixar a rota completa insegura, o retorno antecipado e acionado imediatamente.
-- Se a simulacao deixar a rota restante insegura, o retorno antecipado e acionado, pedidos restantes passam para `PENDING_REASSIGNMENT` e o drone entra em `CHARGING`.
-- A conclusao de uma viagem exige status `IN_ROUTE`.
-- Ao concluir uma viagem com bateria suficiente, a viagem passa para `COMPLETED`, o drone volta para `AVAILABLE` e os pedidos passam para `DELIVERED`.
+- A telemetria de viagem é persistida em histórico consultável por `GET /api/trips/{id}/telemetry`.
+- Entregas durante uma viagem exigem confirmação de disponibilidade com `POST /api/trips/{id}/route/{routePosition}/availability` antes da confirmação por código em `POST /api/trips/{id}/route/{routePosition}/deliver`.
+- A simulação de viagem fica em `GET /api/trips/{id}/simulation` e `POST /api/trips/{id}/simulation/tick`.
+- A simulação automática inicia viagens planejadas, move o drone, consome bateria, solicita disponibilidade na aproximação, para em entregas alcançadas aguardando confirmação do cliente e conclui a viagem quando a rota termina.
+- Se o cliente não responder à solicitação de disponibilidade, o drone retorna à base, a viagem passa para `RETURNED_EARLY` e o pacote atual passa para `NOT_DELIVERED`.
+- Se o cliente confirmar disponibilidade, mas não informar o código de recebimento em 1 minuto após a chegada do drone, o pacote atual passa para `NOT_DELIVERED` e a viagem segue para os próximos pontos da rota.
+- Se uma telemetria deixar a rota completa insegura, o retorno antecipado é acionado imediatamente.
+- Se a simulação deixar a rota restante insegura, o retorno antecipado é acionado, pedidos restantes passam para `PENDING_REASSIGNMENT` e o drone entra em `CHARGING`.
+- A conclusão de uma viagem exige status `IN_ROUTE`.
+- Ao concluir uma viagem com bateria suficiente, a viagem passa para `COMPLETED` somente depois das confirmações de entrega, e o drone volta para `AVAILABLE`.
 - Ao concluir uma viagem sem bateria suficiente para a rota completa, a viagem passa para `RETURNED_EARLY`, o drone entra em `CHARGING` e pedidos sem entrega reportada passam para `PENDING_REASSIGNMENT`.
 - O cancelamento de uma viagem exige status `PLANNED` ou `IN_ROUTE`.
-- Ao cancelar uma viagem, a viagem passa para `CANCELLED`, o drone volta para `AVAILABLE` e pedidos nao entregues voltam para `REQUESTED`.
+- Ao cancelar uma viagem, a viagem passa para `CANCELLED`, o drone volta para `AVAILABLE` e pedidos não entregues voltam para `REQUESTED`.
 - Pedidos alocados pelo planejamento passam para `ALLOCATED`.
-- Pedidos impossiveis de alocar passam para `UNALLOCATED`.
+- Pedidos impossíveis de alocar passam para `UNALLOCATED`.
 - As prioridades existentes sao `HIGH`, `MEDIUM` e `LOW`.
 - Uma viagem pode transportar varios pedidos.
 - Uma viagem invalida nao pode ultrapassar a capacidade do drone.
@@ -1177,7 +1284,7 @@ Quando ha obstaculos ativos, as comparacoes de distancia usam a distancia ajusta
 - O algoritmo e heuristico e pode nao produzir o menor numero global de viagens.
 - A otimizacao exata de rota e limitada a viagens com ate 8 pedidos.
 - Bateria basica, consulta interna, validacao de bateria minima, fila de recarga, tempo estimado, fila operacional de pedidos, obstaculos e retorno antecipado ja existem.
-- A simulacao automatica ja decrementa bateria durante a rota; a acao manual de conclusao permanece como transicao operacional simplificada.
+- A simulação automática já decrementa bateria durante a rota; a ação manual de conclusão permanece como transição operacional, mas exige que as posições da rota estejam resolvidas.
 - Recarga automatica por tempo ja foi aprovada como roteiro, mas ainda nao esta implementada.
 
 ## Roteiro aprovado
@@ -1192,7 +1299,7 @@ Proximas etapas aprovadas para evolucao da aplicacao:
 6. Obstaculos circulares afetando rota, distancia, tempo e bateria. Implementado.
 7. Retorno antecipado quando a bateria atingir o limite minimo de retorno seguro. Implementado.
 8. Replanejamento de pedidos nao entregues com status `PENDING_REASSIGNMENT`. Implementado.
-9. Movimento automatico dos drones com entregas registradas pela simulacao. Implementado.
+9. Movimento automático dos drones com parada para confirmação de entregas pelo cliente. Implementado.
 
 ## Possiveis evolucoes
 

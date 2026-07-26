@@ -36,8 +36,9 @@ class OrderControllerTest {
         storage = new InMemoryOrderStorage();
         OrderRegistrationService registrationService = new OrderRegistrationService(storage);
         OrderQueryService queryService = new OrderQueryService(storage);
+        OrderOperationService operationService = new OrderOperationService(storage);
 
-        mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(registrationService, queryService))
+        mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(registrationService, queryService, operationService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .build();
     }
@@ -54,7 +55,8 @@ class OrderControllerTest {
                                     "y": 4.0
                                   },
                                   "weight": 4.0,
-                                  "priority": "HIGH"
+                                  "priority": "HIGH",
+                                  "confirmedDeliveryTime": "2026-07-26T18:30:00Z"
                                 }
                                 """))
                 .andExpect(status().isCreated())
@@ -65,7 +67,9 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.weight").value(4.0))
                 .andExpect(jsonPath("$.priority").value("HIGH"))
                 .andExpect(jsonPath("$.status").value("REQUESTED"))
-                .andExpect(jsonPath("$.queuedAt").exists());
+                .andExpect(jsonPath("$.queuedAt").exists())
+                .andExpect(jsonPath("$.confirmedDeliveryTime").value("2026-07-26T18:30:00Z"))
+                .andExpect(jsonPath("$.deliveryConfirmationCode").value("ORDER-1"));
     }
 
     @Test
@@ -114,7 +118,8 @@ class OrderControllerTest {
                     "y": 4.0
                   },
                   "weight": 4.0,
-                  "priority": "HIGH"
+                  "priority": "HIGH",
+                  "confirmedDeliveryTime": "2026-07-26T18:30:00Z"
                 }
                 """;
 
@@ -146,6 +151,8 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$[0].weight").value(4.0))
                 .andExpect(jsonPath("$[0].priority").value("HIGH"))
                 .andExpect(jsonPath("$[0].status").value("REQUESTED"))
+                .andExpect(jsonPath("$[0].confirmedDeliveryTime").exists())
+                .andExpect(jsonPath("$[0].deliveryConfirmationCode").doesNotExist())
                 .andExpect(jsonPath("$[1].id").value(2))
                 .andExpect(jsonPath("$[1].identifier").value("ORDER-2"))
                 .andExpect(jsonPath("$[1].status").value("REQUESTED"));
@@ -163,7 +170,9 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.location.y").value(4.0))
                 .andExpect(jsonPath("$.weight").value(4.0))
                 .andExpect(jsonPath("$.priority").value("HIGH"))
-                .andExpect(jsonPath("$.status").value("REQUESTED"));
+                .andExpect(jsonPath("$.status").value("REQUESTED"))
+                .andExpect(jsonPath("$.confirmedDeliveryTime").exists())
+                .andExpect(jsonPath("$.deliveryConfirmationCode").doesNotExist());
     }
 
     @Test
@@ -193,7 +202,37 @@ class OrderControllerTest {
         mockMvc.perform(get("/api/orders").param("status", "INVALID"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message")
-                        .value("status must be one of REQUESTED, ALLOCATED, IN_ROUTE, PENDING_REASSIGNMENT, DELIVERED, CANCELLED, UNALLOCATED"))
+                        .value("status must be one of REQUESTED, ALLOCATED, IN_ROUTE, PENDING_REASSIGNMENT, DELIVERED, NOT_DELIVERED, CANCELLED, UNALLOCATED"))
+                .andExpect(content().string(not(containsString("trace"))));
+    }
+
+    @Test
+    void shouldCancelUnallocatedOrderWithReason() throws Exception {
+        OrderEntity order = storage.save(new OrderEntity(null, "ORDER-UNALLOCATED", 5.0, 6.0, 2.0, Priority.MEDIUM, OrderStatus.REQUESTED));
+        order.changeStatus(OrderStatus.UNALLOCATED, "order exceeds max drone range");
+
+        mockMvc.perform(post("/api/orders/1/cancel")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "reason": "Cliente solicitou cancelamento por inviabilidade operacional."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.statusReason").value("Cliente solicitou cancelamento por inviabilidade operacional."))
+                .andExpect(content().string(not(containsString("trace"))));
+    }
+
+    @Test
+    void shouldRequeueUnallocatedOrder() throws Exception {
+        OrderEntity order = storage.save(new OrderEntity(null, "ORDER-UNALLOCATED", 5.0, 6.0, 2.0, Priority.MEDIUM, OrderStatus.REQUESTED));
+        order.changeStatus(OrderStatus.UNALLOCATED, "order exceeds max drone range");
+
+        mockMvc.perform(post("/api/orders/1/requeue"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("REQUESTED"))
+                .andExpect(jsonPath("$.statusReason").doesNotExist())
                 .andExpect(content().string(not(containsString("trace"))));
     }
 
@@ -214,7 +253,8 @@ class OrderControllerTest {
                                     "y": %s
                                   },
                                   "weight": %s,
-                                  "priority": "%s"
+                                  "priority": "%s",
+                                  "confirmedDeliveryTime": "2026-07-26T18:30:00Z"
                                 }
                                 """.formatted(
                                 identifier,
@@ -255,6 +295,13 @@ class OrderControllerTest {
         }
 
         @Override
+        public List<OrderEntity> findByClientUserId(Long clientUserId) {
+            return ordersById.values().stream()
+                    .filter(order -> order.getClientUser() != null && order.getClientUser().getId().equals(clientUserId))
+                    .toList();
+        }
+
+        @Override
         public List<OrderEntity> findDeliveryQueue() {
             return ordersById.values().stream()
                     .filter(order -> order.getStatus() == OrderStatus.REQUESTED
@@ -272,8 +319,12 @@ class OrderControllerTest {
                     order.getWeight(),
                     order.getPriority(),
                     order.getStatus(),
-                    order.getQueuedAt()
+                    order.getQueuedAt(),
+                    order.getDeliveryConfirmationCode(),
+                    order.getConfirmedDeliveryTime(),
+                    order.getClientUser()
             );
+            savedOrder.changeStatus(savedOrder.getStatus(), order.getStatusReason());
 
             ordersById.put(savedOrder.getId(), savedOrder);
 

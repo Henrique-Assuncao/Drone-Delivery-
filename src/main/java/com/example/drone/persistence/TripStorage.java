@@ -15,4 +15,8 @@ public interface TripStorage {
     Optional<TripEntity> findById(Long id);
 
     TripEntity save(TripEntity trip);
+
+    default boolean existsByDroneId(Long droneId) {
+        return false;
+    }
 }

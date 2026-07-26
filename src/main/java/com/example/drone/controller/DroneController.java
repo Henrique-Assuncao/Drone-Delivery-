@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -27,17 +28,20 @@ public class DroneController {
     private final DroneQueryService queryService;
     private final DroneAvailabilityService availabilityService;
     private final DroneRechargeService rechargeService;
+    private final DroneRemovalService removalService;
 
     public DroneController(
             DroneRegistrationService registrationService,
             DroneQueryService queryService,
             DroneAvailabilityService availabilityService,
-            DroneRechargeService rechargeService
+            DroneRechargeService rechargeService,
+            DroneRemovalService removalService
     ) {
         this.registrationService = registrationService;
         this.queryService = queryService;
         this.availabilityService = availabilityService;
         this.rechargeService = rechargeService;
+        this.removalService = removalService;
     }
 
     @PostMapping
@@ -101,6 +105,11 @@ public class DroneController {
     @PostMapping("/{id}/recharge/complete")
     public DroneResponse completeRecharge(@PathVariable Long id) {
         return toResponse(rechargeService.complete(id));
+    }
+
+    @DeleteMapping("/{id}")
+    public DroneResponse delete(@PathVariable Long id) {
+        return toResponse(removalService.remove(id));
     }
 
     private DroneResponse toResponse(DroneEntity drone) {

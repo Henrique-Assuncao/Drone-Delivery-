@@ -8,6 +8,7 @@ public enum OrderStatus {
     IN_ROUTE,
     PENDING_REASSIGNMENT,
     DELIVERED,
+    NOT_DELIVERED,
     CANCELLED,
     UNALLOCATED
 }

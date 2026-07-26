@@ -19,6 +19,7 @@ Common error rules:
 - Invalid request body syntax returns HTTP `400` with `request body is invalid`.
 - Invalid enum query parameters return HTTP `400` with `status must be one of ...`.
 - Invalid domain input returns HTTP `400`.
+- Missing, invalid or expired client authorization tokens return HTTP `401`.
 - Duplicated resource identifiers return HTTP `409`.
 - Unknown resources return HTTP `404`.
 
@@ -38,6 +39,7 @@ Common error rules:
 - `IN_ROUTE`
 - `PENDING_REASSIGNMENT`
 - `DELIVERED`
+- `NOT_DELIVERED`
 - `CANCELLED`
 - `UNALLOCATED`
 
@@ -330,6 +332,42 @@ Errors:
 - HTTP `404`: `drone not found`
 - HTTP `400`: `drone must be CHARGING to complete recharge`
 
+### Delete Drone
+
+```text
+DELETE /api/drones/{id}
+```
+
+Behavior:
+
+- Deletes a drone that is not in route and has no trips linked to it.
+- Drones in route and drones with trip history are rejected.
+
+Success:
+
+- HTTP `200`
+
+```json
+{
+  "id": 1,
+  "identifier": "DRONE-1",
+  "maxWeightCapacity": 10.0,
+  "maxRange": 20.0,
+  "status": "AVAILABLE",
+  "batteryLevel": 100.0,
+  "batteryConsumptionPerDistanceUnit": 1.0,
+  "minimumReturnBattery": 20.0,
+  "speed": 1.0,
+  "chargingRate": 10.0
+}
+```
+
+Errors:
+
+- HTTP `404`: `drone not found`
+- HTTP `400`: `drone must not be IN_ROUTE to delete`
+- HTTP `400`: `drone with trips cannot be deleted`
+
 ## Recharge Queue
 
 ### List Recharge Queue
@@ -357,6 +395,8 @@ Success:
 
 ## Internal Drones
 
+Internal endpoints require the header `X-Internal-Api-Key`.
+
 ### Get Drone Battery
 
 ```text
@@ -381,9 +421,12 @@ Success:
 
 Errors:
 
+- HTTP `401`: `internal api key is required`
 - HTTP `404`: `drone not found`
 
 ## Internal Demo
+
+Internal endpoints require the header `X-Internal-Api-Key`.
 
 ### Reset And Seed Demo Scenario
 
@@ -410,7 +453,214 @@ Success:
 
 Errors:
 
+- HTTP `401`: `internal api key is required`
 - HTTP `400`: `confirmation must be RESET_DEMO_DATA`
+
+## Client Authentication
+
+Client endpoints that require identity use:
+
+```text
+Authorization: Bearer <token>
+```
+
+### Register Client
+
+```text
+POST /api/auth/register
+```
+
+Request:
+
+```json
+{
+  "name": "Ana Cliente",
+  "email": "ana@example.com",
+  "password": "senha123"
+}
+```
+
+Success:
+
+- HTTP `201`
+
+```json
+{
+  "user": {
+    "id": 1,
+    "name": "Ana Cliente",
+    "email": "ana@example.com",
+    "createdAt": "2026-07-26T20:00:00Z"
+  },
+  "token": "signed-token"
+}
+```
+
+Errors:
+
+- HTTP `400`: `name must not be blank`
+- HTTP `400`: `email is invalid`
+- HTTP `400`: `password must have at least 8 characters`
+- HTTP `409`: `user email already exists`
+
+### Login Client
+
+```text
+POST /api/auth/login
+```
+
+Request:
+
+```json
+{
+  "email": "ana@example.com",
+  "password": "senha123"
+}
+```
+
+Success:
+
+- HTTP `200`
+
+```json
+{
+  "user": {
+    "id": 1,
+    "name": "Ana Cliente",
+    "email": "ana@example.com",
+    "createdAt": "2026-07-26T20:00:00Z"
+  },
+  "token": "signed-token"
+}
+```
+
+Errors:
+
+- HTTP `401`: `email or password is invalid`
+
+### Current Client
+
+```text
+GET /api/auth/me
+```
+
+Success:
+
+- HTTP `200`
+
+```json
+{
+  "id": 1,
+  "name": "Ana Cliente",
+  "email": "ana@example.com",
+  "createdAt": "2026-07-26T20:00:00Z"
+}
+```
+
+Errors:
+
+- HTTP `401`: `authorization token is required`
+- HTTP `401`: `authorization token is invalid`
+- HTTP `401`: `authorization token expired`
+
+## Client Orders
+
+### Create Client Order
+
+```text
+POST /api/client/orders
+```
+
+Request:
+
+```json
+{
+  "identifier": "DD-8F4A2B",
+  "location": {
+    "x": 3.0,
+    "y": 4.0
+  },
+  "weight": 2.5,
+  "confirmedDeliveryTime": "2026-07-26T18:30:00Z"
+}
+```
+
+Behavior:
+
+- Requires a valid client token.
+- Creates the order with priority `MEDIUM`.
+- Links the order to the authenticated client.
+- Uses the order identifier as both tracking code and delivery confirmation code.
+
+Success:
+
+- HTTP `201`
+
+```json
+{
+  "id": 1,
+  "identifier": "DD-8F4A2B",
+  "location": {
+    "x": 3.0,
+    "y": 4.0
+  },
+  "weight": 2.5,
+  "priority": "MEDIUM",
+  "status": "REQUESTED",
+  "queuedAt": "2026-07-26T20:00:00Z",
+  "confirmedDeliveryTime": "2026-07-26T18:30:00Z",
+  "deliveryConfirmationCode": "DD-8F4A2B"
+}
+```
+
+Errors:
+
+- HTTP `401`: `authorization token is required`
+- HTTP `400`: `location must not be null`
+- HTTP `400`: `weight must be greater than zero`
+- HTTP `400`: `confirmedDeliveryTime must not be null`
+- HTTP `409`: `order identifier already exists`
+
+### List Client Orders
+
+```text
+GET /api/client/orders
+```
+
+Behavior:
+
+- Requires a valid client token.
+- Returns only orders linked to the authenticated client.
+- Includes the confirmation code because this is the customer's own order list.
+
+Success:
+
+- HTTP `200`
+
+```json
+[
+  {
+    "id": 1,
+    "identifier": "DD-8F4A2B",
+    "location": {
+      "x": 3.0,
+      "y": 4.0
+    },
+    "weight": 2.5,
+    "priority": "MEDIUM",
+    "status": "REQUESTED",
+    "queuedAt": "2026-07-26T20:00:00Z",
+    "confirmedDeliveryTime": "2026-07-26T18:30:00Z",
+    "deliveryConfirmationCode": "DD-8F4A2B"
+  }
+]
+```
+
+Errors:
+
+- HTTP `401`: `authorization token is required`
+- HTTP `401`: `authorization token is invalid`
+- HTTP `401`: `authorization token expired`
 
 ## Orders
 
@@ -430,7 +680,8 @@ Request:
     "y": 4.0
   },
   "weight": 4.0,
-  "priority": "HIGH"
+  "priority": "HIGH",
+  "confirmedDeliveryTime": "2026-07-26T18:30:00Z"
 }
 ```
 
@@ -449,9 +700,14 @@ Success:
   "weight": 4.0,
   "priority": "HIGH",
   "status": "REQUESTED",
-  "queuedAt": "2026-07-25T20:00:00Z"
+  "queuedAt": "2026-07-25T20:00:00Z",
+  "confirmedDeliveryTime": "2026-07-26T18:30:00Z",
+  "deliveryConfirmationCode": "ORDER-1"
 }
 ```
+
+The create response includes `deliveryConfirmationCode` with the same value as `identifier`, so the customer can track the order and confirm receipt later with one code. List and detail order responses omit this field.
+Order responses include `confirmedDeliveryTime` with the customer-confirmed delivery time and `statusReason` when a non-allocated, not-delivered or cancelled order has a message to show to the customer.
 
 Errors:
 
@@ -459,6 +715,7 @@ Errors:
 - HTTP `400`: `location must not be null`
 - HTTP `400`: `weight must be greater than zero`
 - HTTP `400`: `priority must not be null`
+- HTTP `400`: `confirmedDeliveryTime must not be null`
 - HTTP `409`: `order identifier already exists`
 
 ### List Orders
@@ -472,7 +729,7 @@ Query parameters:
 
 | Name | Required | Values |
 | --- | --- | --- |
-| `status` | No | `REQUESTED`, `ALLOCATED`, `IN_ROUTE`, `PENDING_REASSIGNMENT`, `DELIVERED`, `CANCELLED`, `UNALLOCATED` |
+| `status` | No | `REQUESTED`, `ALLOCATED`, `IN_ROUTE`, `PENDING_REASSIGNMENT`, `DELIVERED`, `NOT_DELIVERED`, `CANCELLED`, `UNALLOCATED` |
 
 Success:
 
@@ -490,14 +747,15 @@ Success:
     "weight": 4.0,
     "priority": "HIGH",
     "status": "REQUESTED",
-    "queuedAt": "2026-07-25T20:00:00Z"
+    "queuedAt": "2026-07-25T20:00:00Z",
+    "confirmedDeliveryTime": "2026-07-26T18:30:00Z"
   }
 ]
 ```
 
 Errors:
 
-- HTTP `400`: `status must be one of REQUESTED, ALLOCATED, IN_ROUTE, PENDING_REASSIGNMENT, DELIVERED, CANCELLED, UNALLOCATED`
+- HTTP `400`: `status must be one of REQUESTED, ALLOCATED, IN_ROUTE, PENDING_REASSIGNMENT, DELIVERED, NOT_DELIVERED, CANCELLED, UNALLOCATED`
 
 ### Get Order By ID
 
@@ -520,13 +778,97 @@ Success:
   "weight": 4.0,
   "priority": "HIGH",
   "status": "REQUESTED",
-  "queuedAt": "2026-07-25T20:00:00Z"
+  "queuedAt": "2026-07-25T20:00:00Z",
+  "confirmedDeliveryTime": "2026-07-26T18:30:00Z"
 }
 ```
 
 Errors:
 
 - HTTP `404`: `order not found`
+
+### Cancel Unallocated Order
+
+```text
+POST /api/orders/{id}/cancel
+```
+
+Request:
+
+```json
+{
+  "reason": "Endereço fora da área atendida pela frota disponível."
+}
+```
+
+Behavior:
+
+- Only orders with status `UNALLOCATED` can be cancelled through this endpoint.
+- The cancellation reason is stored as `statusReason` and is returned to the admin and customer views.
+
+Success:
+
+- HTTP `200`
+
+```json
+{
+  "id": 1,
+  "identifier": "ORDER-1",
+  "location": {
+    "x": 3.0,
+    "y": 4.0
+  },
+  "weight": 4.0,
+  "priority": "HIGH",
+  "status": "CANCELLED",
+  "queuedAt": "2026-07-25T20:00:00Z",
+  "confirmedDeliveryTime": "2026-07-26T18:30:00Z",
+  "statusReason": "Endereço fora da área atendida pela frota disponível."
+}
+```
+
+Errors:
+
+- HTTP `404`: `order not found`
+- HTTP `400`: `request body must not be null`
+- HTTP `400`: `cancel reason must not be blank`
+- HTTP `400`: `order must be UNALLOCATED to cancel`
+
+### Requeue Unallocated Order
+
+```text
+POST /api/orders/{id}/requeue
+```
+
+Behavior:
+
+- Only orders with status `UNALLOCATED` can be returned to planning.
+- The order status changes back to `REQUESTED` and the previous status message is cleared.
+
+Success:
+
+- HTTP `200`
+
+```json
+{
+  "id": 1,
+  "identifier": "ORDER-1",
+  "location": {
+    "x": 3.0,
+    "y": 4.0
+  },
+  "weight": 4.0,
+  "priority": "HIGH",
+  "status": "REQUESTED",
+  "queuedAt": "2026-07-25T20:00:00Z",
+  "confirmedDeliveryTime": "2026-07-26T18:30:00Z"
+}
+```
+
+Errors:
+
+- HTTP `404`: `order not found`
+- HTTP `400`: `order must be UNALLOCATED to requeue`
 
 ### List Delivery Queue
 
@@ -555,7 +897,8 @@ Success:
     "weight": 4.0,
     "priority": "HIGH",
     "status": "REQUESTED",
-    "queuedAt": "2026-07-25T20:00:00Z"
+    "queuedAt": "2026-07-25T20:00:00Z",
+    "confirmedDeliveryTime": "2026-07-26T18:30:00Z"
   }
 ]
 ```
@@ -815,7 +1158,7 @@ Response with unallocated orders:
     {
       "orderId": 1,
       "orderIdentifier": "ORDER-1",
-      "reason": "order exceeds max drone weight capacity"
+      "reason": "Pedido excede a capacidade máxima de peso dos drones disponíveis."
     }
   ]
 }
@@ -823,11 +1166,11 @@ Response with unallocated orders:
 
 Known unallocated reasons:
 
-- `order exceeds max drone weight capacity`
-- `order exceeds max drone range`
-- `order exceeds max drone weight capacity and max drone range`
-- `order exceeds drone battery for complete trip and safe return`
-- `order cannot be served by any drone`
+- `Pedido excede a capacidade máxima de peso dos drones disponíveis.`
+- `Pedido excede o alcance máximo dos drones disponíveis.`
+- `Pedido excede a capacidade máxima de peso e o alcance máximo dos drones disponíveis.`
+- `Pedido exige mais bateria do que a frota disponível possui para concluir a rota e retornar em segurança.`
+- `Pedido não pode ser atendido por nenhum drone no planejamento atual.`
 
 Errors:
 
@@ -1006,7 +1349,9 @@ Behavior:
 - `GET` returns the current persisted simulation state for the trip.
 - `POST /tick` advances a planned or in-route trip by the given simulated minutes.
 - When the first tick reaches a `PLANNED` trip, the trip starts automatically if the drone is `AVAILABLE` and battery is sufficient for the saved route plus safe-return reserve.
-- The simulation consumes battery by travelled distance, updates current drone position, marks reached route positions as delivered, and completes the trip when the full route is finished.
+- The simulation consumes battery by travelled distance, updates current drone position, requests customer availability when the drone enters the approach window, stops at reached route positions while waiting for customer confirmation, and completes the trip when the full route is finished after all route positions are resolved.
+- If the customer does not respond to the availability request before `availabilityResponseDeadline`, the trip changes to `RETURNED_EARLY`, the current package becomes `NOT_DELIVERED` with a Portuguese `statusReason`, remaining undelivered packages become `PENDING_REASSIGNMENT`, and the drone returns to base.
+- After availability is confirmed and the drone reaches the address, `deliveryConfirmationRequestedAt` starts a 1-minute window. If the customer does not enter the code before `deliveryConfirmationDeadline`, that package becomes `NOT_DELIVERED`, the route position is resolved as failed, and the drone continues the route carrying the package back to base.
 - If the remaining route is no longer safe, the trip changes to `RETURNED_EARLY`, undelivered orders become `PENDING_REASSIGNMENT`, and the drone enters `CHARGING`.
 
 Success:
@@ -1039,18 +1384,98 @@ Errors:
 - HTTP `400`: `drone must be AVAILABLE to start trip`
 - HTTP `400`: `drone battery is insufficient for complete trip and safe return`
 
+### Confirm Route Availability
+
+```text
+POST /api/trips/{id}/route/{routePosition}/availability
+```
+
+Request:
+
+```json
+{
+  "available": true
+}
+```
+
+Behavior:
+
+- Accepts customer availability only for trips with status `IN_ROUTE`.
+- Requires the availability notification to have been sent for that route position.
+- With `available: true`, stores `availabilityConfirmedAt` and allows delivery confirmation by code when the drone reaches the route position.
+- With `available: false`, the drone returns to base, the trip changes to `RETURNED_EARLY`, and the current package changes to `NOT_DELIVERED` with `statusReason`.
+- If the response arrives after `availabilityResponseDeadline`, it is treated as no response and the package becomes `NOT_DELIVERED`.
+
+Success:
+
+- HTTP `200`
+
+```json
+{
+  "id": 1,
+  "droneId": 1,
+  "status": "IN_ROUTE",
+  "orders": [1],
+  "route": [1],
+  "routeProgress": [
+    {
+      "orderId": 1,
+      "routePosition": 0,
+      "delivered": false,
+      "deliveredAt": null,
+      "estimatedDeliveryTime": 10.0,
+      "availabilityNotifiedAt": "2026-07-26T18:28:00Z",
+      "availabilityConfirmedAt": "2026-07-26T18:28:10Z",
+      "availabilityResponseDeadline": "2026-07-26T18:28:30Z",
+      "deliveryConfirmationRequestedAt": null,
+      "deliveryConfirmationDeadline": null,
+      "deliveryFailedAt": null,
+      "deliveryFailureReason": null
+    }
+  ],
+  "totalWeight": 4.0,
+  "totalDistance": 20.0,
+  "estimatedDuration": 20.0,
+  "averageDeliveryTime": 10.0
+}
+```
+
+Errors:
+
+- HTTP `404`: `trip not found`
+- HTTP `404`: `trip route position not found`
+- HTTP `400`: `request body must not be null`
+- HTTP `400`: `available must not be null`
+- HTTP `400`: `trip must be IN_ROUTE to confirm delivery availability`
+- HTTP `400`: `routePosition must not be negative`
+- HTTP `400`: `previous route positions must be delivered first`
+- HTTP `400`: `route position already delivered`
+- HTTP `400`: `delivery availability has not been requested yet`
+
 ### Report Route Delivery
 
 ```text
 POST /api/trips/{id}/route/{routePosition}/deliver
 ```
 
+Request:
+
+```json
+{
+  "confirmationCode": "ORDER-1"
+}
+```
+
 Behavior:
 
 - Accepts delivery progress only for trips with status `IN_ROUTE`.
+- Requires the customer delivery confirmation code, which is the same as the order tracking identifier.
+- Requires customer availability to be confirmed for that route position.
+- Requires the drone to have reached the route position before confirmation.
+- The code can be entered only until `deliveryConfirmationDeadline`, 1 minute after `deliveryConfirmationRequestedAt`.
 - Marks the route item at `routePosition` as delivered and stores `deliveredAt`.
 - Changes the associated order status to `DELIVERED`.
-- Requires previous route positions to be delivered first.
+- Requires previous route positions to be resolved first, either delivered or marked `NOT_DELIVERED` by the delivery-confirmation timeout.
 
 Success:
 
@@ -1068,13 +1493,29 @@ Success:
       "orderId": 1,
       "routePosition": 0,
       "delivered": true,
-      "deliveredAt": "2026-07-25T20:00:00Z"
+      "deliveredAt": "2026-07-25T20:00:00Z",
+      "estimatedDeliveryTime": 10.0,
+      "availabilityNotifiedAt": "2026-07-26T18:28:00Z",
+      "availabilityConfirmedAt": "2026-07-26T18:28:10Z",
+      "availabilityResponseDeadline": "2026-07-26T18:28:30Z",
+      "deliveryConfirmationRequestedAt": "2026-07-26T18:30:00Z",
+      "deliveryConfirmationDeadline": "2026-07-26T18:31:00Z",
+      "deliveryFailedAt": null,
+      "deliveryFailureReason": null
     },
     {
       "orderId": 2,
       "routePosition": 1,
       "delivered": false,
-      "deliveredAt": null
+      "deliveredAt": null,
+      "estimatedDeliveryTime": 16.0,
+      "availabilityNotifiedAt": null,
+      "availabilityConfirmedAt": null,
+      "availabilityResponseDeadline": null,
+      "deliveryConfirmationRequestedAt": null,
+      "deliveryConfirmationDeadline": null,
+      "deliveryFailedAt": null,
+      "deliveryFailureReason": null
     }
   ],
   "totalWeight": 8.0,
@@ -1087,10 +1528,17 @@ Errors:
 
 - HTTP `404`: `trip not found`
 - HTTP `404`: `trip route position not found`
+- HTTP `400`: `request body must not be null`
 - HTTP `400`: `trip must be IN_ROUTE to report delivery`
 - HTTP `400`: `routePosition must not be negative`
 - HTTP `400`: `previous route positions must be delivered first`
 - HTTP `400`: `route position already delivered`
+- HTTP `400`: `route position already marked not delivered`
+- HTTP `400`: `delivery confirmation code must not be blank`
+- HTTP `400`: `delivery availability must be confirmed before delivery`
+- HTTP `400`: `delivery confirmation window expired`
+- HTTP `400`: `delivery confirmation code is invalid`
+- HTTP `400`: `drone has not reached route position yet`
 
 ### Report Trip Telemetry
 
@@ -1215,8 +1663,8 @@ POST /api/trips/{id}/complete
 
 Behavior:
 
-- If the current battery can still cover the saved route and safe-return reserve, the trip changes from `IN_ROUTE` to `COMPLETED`.
-- In that complete path, the associated drone changes to `AVAILABLE` and all associated orders change to `DELIVERED`.
+- If the current battery can still cover the saved route and safe-return reserve and every route position has been resolved, the trip changes from `IN_ROUTE` to `COMPLETED`.
+- In that complete path, the associated drone changes to `AVAILABLE`; associated orders are already `DELIVERED` from customer confirmations.
 - If the current battery cannot cover the saved route, the early-return path uses the persisted route progress.
 - In the early-return path, route positions already reported as delivered remain `DELIVERED`, unreported route positions change to `PENDING_REASSIGNMENT`, the trip changes to `RETURNED_EARLY`, and the drone enters `CHARGING`.
 
@@ -1280,6 +1728,7 @@ Errors:
 
 - HTTP `404`: `trip not found`
 - HTTP `400`: `trip must be IN_ROUTE to complete`
+- HTTP `400`: `all route positions must be resolved before completing trip`
 
 ### Cancel Trip
 
@@ -1314,3 +1763,83 @@ Errors:
 
 - HTTP `404`: `trip not found`
 - HTTP `400`: `trip must be PLANNED or IN_ROUTE to cancel`
+
+## Productivity Reports
+
+### Monthly Productivity Report
+
+```text
+GET /api/reports/productivity/monthly
+GET /api/reports/productivity/monthly?month=2026-07
+```
+
+Query parameters:
+
+| Name | Required | Format | Default |
+| --- | --- | --- | --- |
+| `month` | No | `YYYY-MM` | Current month |
+
+Behavior:
+
+- Calculates and saves the requested month before returning it.
+- Counts order entries, sent orders, delivered orders, cancelled orders and drone performance inside the selected monthly period.
+
+Success:
+
+- HTTP `200`
+
+```json
+{
+  "month": "2026-07",
+  "periodStart": "2026-07-01T03:00:00Z",
+  "periodEnd": "2026-08-01T03:00:00Z",
+  "orderEntries": 5,
+  "ordersSent": 4,
+  "ordersDelivered": 3,
+  "ordersCancelled": 1,
+  "conversionRate": 0.6,
+  "drones": [
+    {
+      "droneId": 1,
+      "droneIdentifier": "DRONE-1",
+      "ordersDelivered": 3,
+      "tripsStarted": 2,
+      "tripsCompleted": 1,
+      "tripsCancelled": 0,
+      "tripsReturnedEarly": 0
+    }
+  ],
+  "generatedAt": "2026-07-26T18:00:00Z"
+}
+```
+
+Errors:
+
+- HTTP `400`: `month must use YYYY-MM format`
+
+### Monthly Productivity Report History
+
+```text
+GET /api/reports/productivity/monthly/history
+```
+
+Success:
+
+- HTTP `200`
+
+```json
+[
+  {
+    "month": "2026-07",
+    "periodStart": "2026-07-01T03:00:00Z",
+    "periodEnd": "2026-08-01T03:00:00Z",
+    "orderEntries": 5,
+    "ordersSent": 4,
+    "ordersDelivered": 3,
+    "ordersCancelled": 1,
+    "conversionRate": 0.6,
+    "drones": [],
+    "generatedAt": "2026-07-26T18:00:00Z"
+  }
+]
+```

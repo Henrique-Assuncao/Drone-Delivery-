@@ -130,6 +130,13 @@ class DeliveryQueueControllerTest {
         }
 
         @Override
+        public List<OrderEntity> findByClientUserId(Long clientUserId) {
+            return ordersById.values().stream()
+                    .filter(order -> order.getClientUser() != null && order.getClientUser().getId().equals(clientUserId))
+                    .toList();
+        }
+
+        @Override
         public List<OrderEntity> findDeliveryQueue() {
             return ordersById.values().stream()
                     .filter(order -> order.getStatus() == OrderStatus.REQUESTED
@@ -149,8 +156,11 @@ class DeliveryQueueControllerTest {
                     order.getWeight(),
                     order.getPriority(),
                     order.getStatus(),
-                    order.getQueuedAt()
+                    order.getQueuedAt(),
+                    order.getDeliveryConfirmationCode(),
+                    order.getConfirmedDeliveryTime()
             );
+            savedOrder.changeStatus(savedOrder.getStatus(), order.getStatusReason());
 
             ordersById.put(savedOrder.getId(), savedOrder);
 

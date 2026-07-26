@@ -39,6 +39,11 @@ public class JpaOrderStorage implements OrderStorage {
     }
 
     @Override
+    public List<OrderEntity> findByClientUserId(Long clientUserId) {
+        return repository.findByClientUser_IdOrderByIdAsc(clientUserId);
+    }
+
+    @Override
     public List<OrderEntity> findDeliveryQueue() {
         return repository.findByStatusInOrderByQueuedAtAscIdAsc(List.of(
                 OrderStatus.REQUESTED,

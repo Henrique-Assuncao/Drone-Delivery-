@@ -35,7 +35,7 @@ Este documento mantém o histórico das decisões tomadas durante o desenvolvime
 | D020 | Viagens terão status `PLANNED`, `IN_ROUTE`, `RETURNED_EARLY`, `COMPLETED` e `CANCELLED`. | Decidida | Será possível acompanhar viagens planejadas, em rota, retornadas antecipadamente, concluídas e canceladas. |
 | D021 | Uma viagem criada pelo planejamento começará como `PLANNED`. | Decidida | O planejamento registra intenção operacional sem iniciar a rota imediatamente. |
 | D022 | Ao iniciar uma viagem, viagem, drone e pedidos passam para `IN_ROUTE`. | Decidida | O início da rota bloqueia o drone e move os pedidos para acompanhamento de entrega. |
-| D023 | Ao concluir uma viagem, a viagem passa para `COMPLETED`, o drone volta para `AVAILABLE` e os pedidos passam para `DELIVERED`. | Decidida | A conclusão libera o drone e encerra o ciclo dos pedidos entregues. |
+| D023 | Ao concluir uma viagem, a viagem passa para `COMPLETED`, o drone volta para `AVAILABLE` e as posições da rota precisam estar resolvidas. | Decidida | A conclusão libera o drone sem marcar pedidos como entregues sem confirmação do cliente. |
 | D024 | Ao cancelar uma viagem não concluída, a viagem passa para `CANCELLED`, o drone volta para `AVAILABLE` e os pedidos não entregues voltam para `REQUESTED`. | Decidida | O cancelamento libera recursos e permite replanejar pedidos ainda não entregues. |
 | D025 | A API operacional terá endpoints mínimos para cadastro e consulta de drones. | Decidida | A frota poderá ser registrada e consultada antes do planejamento. |
 | D026 | A API operacional terá endpoints mínimos para cadastro e consulta de pedidos. | Decidida | A demanda poderá ser registrada e filtrada por status. |
@@ -83,11 +83,16 @@ Este documento mantém o histórico das decisões tomadas durante o desenvolvime
 | D068 | Retorno antecipado marca a viagem como `RETURNED_EARLY`, pedidos restantes como `PENDING_REASSIGNMENT` e o drone como `CHARGING`. | Decidida | O sistema preserva entregas já realizadas, separa pedidos transferíveis e tira o drone de novos planejamentos até recarga. |
 | D069 | Viagens em rota aceitam telemetria de bateria pelo endpoint `POST /api/trips/{id}/telemetry`. | Decidida | O retorno antecipado pode ser acionado por evento operacional antes da conclusão manual da viagem. |
 | D070 | O histórico de telemetria de uma viagem será consultável por `GET /api/trips/{id}/telemetry`. | Decidida | Operadores podem auditar as leituras recebidas durante a viagem. |
-| D071 | Viagens em rota registram entregas por posição com `POST /api/trips/{id}/route/{routePosition}/deliver`. | Decidida | O retorno antecipado passa a preservar somente entregas explicitamente reportadas, sem inferir pedidos entregues pela bateria. |
+| D071 | Viagens em rota confirmam entregas por posição com `POST /api/trips/{id}/route/{routePosition}/deliver` e código do cliente. | Decidida | O retorno antecipado passa a preservar somente entregas confirmadas pelo destinatário, sem inferir pedidos entregues pela bateria. |
 | D072 | A ordem automática de entregas usará prioridade, maior peso e menor distância da base. | Decidida | A análise deixa de depender apenas de fila ou menor rota geométrica e passa a refletir critérios operacionais dos pacotes. |
 | D073 | As respostas de viagem retornarão tempo estimado por pacote e tempo médio até entrega. | Decidida | O cliente passa a receber uma previsão por posição da rota e uma média da viagem. |
 | D074 | Clientes poderão avaliar o serviço com estrelas, título e feedback. | Decidida | A aplicação passa a registrar percepção simples do serviço sem depender de pedidos ou viagens neste ciclo. |
-| D075 | Viagens poderão ser avançadas por simulação automática de tempo. | Decidida | O sistema passa a mover drones, consumir bateria, registrar entregas alcançadas e encerrar ou retornar viagens sem ação manual por entrega. |
+| D075 | Viagens poderão ser avançadas por simulação automática de tempo. | Decidida | O sistema passa a mover drones, consumir bateria, parar em entregas alcançadas aguardando confirmação e encerrar ou retornar viagens conforme a rota. |
+| D076 | Pedidos não alocados terão mensagem de status persistida e visível para admin e cliente. | Decidida | O cliente entende por que o pacote ficou parado e o admin recebe orientação para cancelar ou reenviar ao planejamento. |
+| D077 | O admin poderá cancelar pedido não alocado com justificativa obrigatória ou reenviá-lo para planejamento. | Decidida | A operação passa a ter uma decisão explícita para pacotes que não puderam ser alocados automaticamente. |
+| D078 | A área Cliente exibirá aviso interativo com som quando o drone estiver chegando ao destino. | Decidida | O destinatário recebe um alerta mais difícil de ignorar antes da confirmação de recebimento. |
+| D079 | O admin poderá excluir drones sem viagem vinculada e fora de rota. | Decidida | A frota pode ser corrigida no cadastro sem remover histórico operacional nem drone em operação. |
+| D080 | Motivos de não alocação exibidos na API operacional e no cliente serão em português. | Decidida | O cliente recebe uma explicação apresentável, sem mensagens técnicas internas em inglês. |
 
 ## Decisões técnicas
 
@@ -151,13 +156,21 @@ Este documento mantém o histórico das decisões tomadas durante o desenvolvime
 | T056 | A primeira tela Cliente reutilizará endpoints existentes. | Decidida | O cliente poderá solicitar entrega, acompanhar por ID ou código e avaliar o serviço sem alterar o backend neste ciclo. |
 | T057 | O estado de simulação será persistido em `trips`. | Decidida | O dashboard pode recarregar e continuar exibindo posição, distância percorrida e progresso sem manter estado apenas no navegador. |
 | T058 | O dashboard avançará automaticamente viagens planejadas ou em rota. | Decidida | Admin e Cliente observam o mesmo ciclo operacional em tempo quase real usando o endpoint de tick da API. |
+| T059 | Endpoints internos sob `/internal` exigirão header `X-Internal-Api-Key`. | Decidida | A separação por caminho passa a ter uma barreira de autenticação configurável sem afetar a API pública do desafio. |
+| T060 | Pedidos terão `delivery_confirmation_code` persistido com o mesmo valor do identificador de rastreio. | Decidida | A aba Cliente pode acompanhar e confirmar recebimento com um único código, sem depender de ação administrativa para registrar a entrega. |
+| T061 | Pedidos terão `status_reason` persistido para mensagens operacionais. | Decidida | Motivos de não alocação e justificativas de cancelamento podem ser exibidos de forma consistente para admin e cliente. |
+| T062 | O dashboard usará o parâmetro `month=YYYY-MM` para alternar o relatório mensal. | Decidida | A interface pode recalcular e exibir competências anteriores sem criar novos endpoints. |
+| T063 | Pedidos terão `confirmed_delivery_time` persistido. | Decidida | O cadastro passa a registrar o horário confirmado de entrega antes do planejamento e esse horário fica visível para admin e cliente. |
+| T064 | A entrega por código exigirá disponibilidade confirmada pelo cliente. | Decidida | A notificação de aproximação deixa de ser apenas informativa e passa a liberar a confirmação de recebimento somente após resposta explícita do cliente. |
+| T065 | Falta de resposta de disponibilidade marcará o pacote como `NOT_DELIVERED`. | Decidida | O drone retorna à base com a encomenda, a viagem fica `RETURNED_EARLY` e o pacote mantém uma tag rastreável de não entrega com motivo em português. |
+| T066 | O cliente terá 1 minuto para informar o código após a chegada do drone. | Decidida | Se o prazo expirar, o pacote fica `NOT_DELIVERED`, a posição é resolvida como falha e o drone segue a rota levando a encomenda de volta para a base. |
+| T067 | A aba Cliente terá `Meus pedidos` vinculada à conta autenticada. | Decidida | Com autenticação de cliente, a interface lista pedidos persistidos da conta e permite alternar o pedido acompanhado sem depender de códigos salvos no navegador. |
 
 ## Decisões pendentes
 
 | ID | Decisão pendente | Observação |
 | --- | --- | --- |
 | P002 | Definir se haverá CLI além da API REST. | A interface escolhida para teste manual no momento é HTTP via Postman. |
-| P003 | Definir autenticação e autorização para endpoints internos. | O caminho `/internal` separa o contrato, mas ainda não há mecanismo real de autenticação no projeto. |
 
 ## Histórico resumido
 
@@ -210,7 +223,7 @@ Este documento mantém o histórico das decisões tomadas durante o desenvolvime
 - O retorno antecipado foi implementado em `POST /api/trips/{id}/complete` com status `RETURNED_EARLY`, pedidos restantes em `PENDING_REASSIGNMENT` e drone em `CHARGING`.
 - A telemetria de bateria foi implementada com `POST /api/trips/{id}/telemetry`, atualizando `batteryLevel`, persistindo histórico e acionando retorno antecipado quando a rota deixa de ser segura.
 - A consulta de histórico de telemetria foi implementada com `GET /api/trips/{id}/telemetry`.
-- O progresso de entrega por posição da rota foi implementado com `POST /api/trips/{id}/route/{routePosition}/deliver` e `trip_orders.delivered_at`.
+- O progresso de entrega por posição da rota foi implementado com `POST /api/trips/{id}/route/{routePosition}/deliver`, `confirmationCode` e `trip_orders.delivered_at`.
 - A ordem automática de entrega por prioridade, peso e distância foi implementada no planejamento e na rota persistida.
 - O tempo estimado por pacote e o tempo médio até entrega foram implementados nas respostas de planejamento e viagem.
 - Avaliações do serviço foram implementadas com `POST /api/reviews`, `GET /api/reviews` e `GET /api/reviews/{id}`.
@@ -218,7 +231,7 @@ Este documento mantém o histórico das decisões tomadas durante o desenvolvime
 - A base do dashboard frontend foi criada em `frontend`, com visão geral operacional consumindo endpoints reais da API.
 - O dashboard frontend recebeu tabelas consultivas de drones, pedidos e viagens com busca e filtro por status.
 - O dashboard frontend recebeu ações operacionais de drones com atualização automática dos indicadores após cada ação.
-- O dashboard frontend recebeu ações operacionais de viagens para iniciar, registrar entrega da próxima posição, enviar telemetria de bateria, concluir e cancelar.
+- O dashboard frontend recebeu ações operacionais de viagens para iniciar, aguardar confirmação do cliente, enviar telemetria de bateria, concluir e cancelar.
 - O dashboard frontend recebeu cadastro de drones, cadastro de pedidos e acionamento de planejamento persistido com opção de rota otimizada.
 - O dashboard frontend recebeu gestão de obstáculos circulares com cadastro, listagem de estado e desativação.
 - O dashboard frontend recebeu cadastro e consulta de avaliações com estrelas, título e feedback.
@@ -235,6 +248,10 @@ Este documento mantém o histórico das decisões tomadas durante o desenvolvime
 - O mapa 2D do dashboard passou a alternar entre rota da viagem selecionada e rotas de todas as viagens.
 - As rotas do mapa receberam cores por viagem, setas de direção, chips de seleção e pontos numerados pela ordem de entrega.
 - O frontend passou a ter navegação entre experiência Admin e experiência Cliente.
-- A tela Cliente passou a permitir solicitação limitada de entrega, acompanhamento por ID ou código, mapa da viagem associada e avaliações públicas.
+- A tela Cliente passou a permitir solicitação limitada de entrega, acompanhamento por ID ou código, confirmação de recebimento, mapa da viagem associada e avaliações públicas.
 - Viagens passaram a expor estado de simulação com posição atual, distância percorrida, progresso e próximo pedido.
-- O dashboard passou a avançar automaticamente viagens planejadas ou em rota, exibindo o marcador do drone no mapa e refletindo entregas registradas pelo backend.
+- O dashboard passou a avançar automaticamente viagens planejadas ou em rota, exibindo o marcador do drone no mapa e aguardando confirmação do cliente nos pontos de entrega.
+- Endpoints internos sob `/internal` passaram a exigir o header `X-Internal-Api-Key`.
+- Pedidos passaram a usar o próprio código de rastreio como código de confirmação de entrega, exibido no cadastro e exigido na confirmação feita pela aba Cliente.
+- A experiência Cliente passou a exigir cadastro/login, com senha armazenada por hash PBKDF2 no backend, token assinado para sessão e pedidos vinculados à conta autenticada.
+- A aba `Meus pedidos` passou a listar pedidos persistidos da conta autenticada, substituindo a lista local de códigos salvos no navegador.

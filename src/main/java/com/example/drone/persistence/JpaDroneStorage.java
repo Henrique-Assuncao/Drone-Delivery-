@@ -47,4 +47,9 @@ public class JpaDroneStorage implements DroneStorage {
     public DroneEntity save(DroneEntity drone) {
         return repository.save(drone);
     }
+
+    @Override
+    public void delete(DroneEntity drone) {
+        repository.delete(drone);
+    }
 }

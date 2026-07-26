@@ -329,6 +329,17 @@ h3 {
   outline: none;
 }
 
+.inlineButton.neutral {
+  border-color: var(--line);
+  color: var(--accent);
+}
+
+.inlineButton.neutral:hover,
+.inlineButton.neutral:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .dangerButton {
   border: 1px solid var(--bad);
   color: #ffffff;
@@ -420,6 +431,12 @@ h3 {
   background: #fff1ef;
 }
 
+.actionBanner.info {
+  border: 1px solid #a7c7ed;
+  color: #1e477c;
+  background: #eef6ff;
+}
+
 .modalBackdrop {
   position: fixed;
   inset: 0;
@@ -471,6 +488,10 @@ h3 {
   flex-wrap: wrap;
 }
 
+.reasonField {
+  margin-top: 16px;
+}
+
 .trackingCodeDialog {
   width: min(460px, 100%);
   padding: 24px;
@@ -493,22 +514,69 @@ h3 {
 }
 
 .trackingCodeValue {
-  display: block;
-  margin: 18px auto 10px;
-  padding: 14px 18px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 6px 10px;
   border: 1px solid #9bd8cd;
   border-radius: 8px;
   color: #102026;
   background: #d9eef0;
-  font-size: 34px;
+  font-size: 18px;
   font-weight: 850;
   letter-spacing: 0;
 }
 
+.trackingCodeLine {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.trackingCodeLine span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
 .trackingCodeHint {
-  margin: 0;
+  margin: 16px 0 0;
   color: var(--muted);
   font-size: 14px;
+  line-height: 1.45;
+}
+
+.arrivalNotificationDialog {
+  display: grid;
+  justify-items: center;
+  width: min(500px, 100%);
+  padding: 26px;
+  border: 1px solid #a7c7ed;
+  border-radius: 8px;
+  text-align: center;
+  background: var(--surface);
+  box-shadow: 0 24px 70px rgba(20, 32, 38, 0.30);
+}
+
+.arrivalNotificationIcon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  color: #1e477c;
+  background: #e3eefb;
+}
+
+.arrivalNotificationDialog p:not(.eyebrow) {
+  margin: 12px 0 18px;
+  color: #34424b;
+  font-size: 15px;
   line-height: 1.45;
 }
 
@@ -526,7 +594,7 @@ h3 {
 
 .clientMetricGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 14px;
 }
 
@@ -611,6 +679,59 @@ h3 {
 
 .operationHeader.compact .toolHeader {
   margin-bottom: 0;
+}
+
+.reportHeader {
+  flex-wrap: wrap;
+}
+
+.reportMonthControls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.monthPicker {
+  display: grid;
+  grid-template-columns: 18px minmax(110px, 1fr);
+  gap: 6px;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: #ffffff;
+}
+
+.monthPicker input {
+  min-width: 0;
+  height: 30px;
+  border: 0;
+  color: var(--text);
+  background: transparent;
+  outline: none;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.monthPicker:focus-within {
+  border-color: var(--accent);
+}
+
+.reportMonthLabel {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  margin-bottom: 14px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .funnelList {
@@ -837,10 +958,16 @@ h3 {
 
 .unavailable,
 .cancelled,
+.not_delivered,
 .unallocated,
 .returned_early {
   color: #7e241d;
   background: #f8dfdc;
+}
+
+.missing {
+  color: #5f6870;
+  background: #e7ebee;
 }
 
 .alertList {
@@ -1068,7 +1195,8 @@ h3 {
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
   height: 38px;
 }
 
@@ -1091,6 +1219,11 @@ h3 {
   padding: 10px;
   resize: vertical;
   line-height: 1.35;
+}
+
+.field textarea:disabled {
+  color: #a7b2b9;
+  background: #f1f4f5;
 }
 
 .inputWithIcon {
@@ -1275,11 +1408,141 @@ h3 {
   align-items: stretch;
 }
 
+.clientAuthLayout {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.8fr) minmax(300px, 1.2fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.clientAuthPanel,
+.clientAuthAside {
+  min-height: 100%;
+}
+
+.clientAuthPanel .segmentedControl {
+  margin-bottom: 2px;
+}
+
+.clientAuthBenefits {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.clientSessionBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.clientSessionBar span,
+.clientSessionBar strong,
+.clientSessionBar small {
+  display: block;
+}
+
+.clientSessionBar span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.clientSessionBar strong {
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 17px;
+}
+
+.clientSessionBar small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .clientTrackingLayout {
   display: grid;
   grid-template-columns: minmax(300px, 0.78fr) minmax(420px, 1.22fr);
   gap: 14px;
   align-items: stretch;
+}
+
+.clientOrdersList {
+  display: grid;
+  gap: 10px;
+}
+
+.clientOrderItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.clientOrderItem.selected {
+  border-color: #9bd8cd;
+  background: #f2fbf8;
+}
+
+.clientOrderItemMain {
+  min-width: 0;
+}
+
+.clientOrderItemHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.clientOrderItemHeader strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.clientOrderItemMeta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.clientOrderItemMeta span {
+  padding: 4px 7px;
+  border-radius: 6px;
+  color: #34424b;
+  background: var(--surface-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.clientOrderItemReason {
+  margin: 9px 0 0;
+  color: #7e241d;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.clientOrderItemActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .clientOrderPanel,
@@ -1293,7 +1556,7 @@ h3 {
 
 .clientTrackingSummary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(82px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
   gap: 8px;
 }
 
@@ -1351,6 +1614,58 @@ h3 {
 
 .clientTimelineStep.blocked strong {
   color: #7e241d;
+}
+
+.clientOrderNotice {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.clientOrderNotice.warning {
+  border: 1px solid #efd489;
+  color: #704100;
+  background: #fff7df;
+}
+
+.clientOrderNotice.error {
+  border: 1px solid #efb0aa;
+  color: #701d18;
+  background: #fff1ef;
+}
+
+.clientOrderNotice.success {
+  border: 1px solid #a9d9bd;
+  color: #145332;
+  background: #edf9f1;
+}
+
+.clientOrderNotice strong,
+.clientOrderNotice span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.clientOrderNotice span {
+  margin-top: 3px;
+}
+
+.deliveryConfirmationForm {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.deliveryConfirmationForm .field {
+  margin: 0;
 }
 
 .queueColumn {
@@ -1416,6 +1731,59 @@ h3 {
 
 .queueMeta svg {
   flex: 0 0 auto;
+}
+
+.unallocatedTreatmentList {
+  display: grid;
+  gap: 12px;
+}
+
+.unallocatedTreatmentItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid #efd489;
+  border-radius: 8px;
+  background: #fffaf0;
+  box-shadow: var(--shadow);
+}
+
+.unallocatedTreatmentMain {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.unallocatedTreatmentHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.unallocatedTreatmentHeader strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.unallocatedTreatmentMain p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #704100;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.unallocatedTreatmentActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .reviewGrid {
@@ -1678,6 +2046,10 @@ table {
 
 .tripTable {
   min-width: 1320px;
+}
+
+.orderTable {
+  min-width: 1220px;
 }
 
 .tripDetailPanel {
@@ -2146,6 +2518,11 @@ table {
   background: #dff2e8;
 }
 
+.routeStepMarker.failed {
+  color: #7e241d;
+  background: #f8dfdc;
+}
+
 .routeStepMain {
   min-width: 0;
 }
@@ -2171,6 +2548,13 @@ table {
   color: var(--muted);
   font-size: 12px;
   flex-wrap: wrap;
+}
+
+.routeStepReason {
+  margin: 7px 0 0;
+  color: #7e241d;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .telemetryHistoryItem {
@@ -2237,6 +2621,14 @@ tbody tr.selectedRow {
 .strongCell {
   color: var(--text);
   font-weight: 750;
+}
+
+.reasonCell {
+  max-width: 260px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
 }
 
 .priorityChip {
@@ -2405,6 +2797,10 @@ tbody tr.selectedRow {
     grid-template-columns: 1fr;
   }
 
+  .clientAuthLayout {
+    grid-template-columns: 1fr;
+  }
+
   .clientTrackingLayout {
     grid-template-columns: 1fr;
   }
@@ -2471,7 +2867,7 @@ tbody tr.selectedRow {
   }
 
   .navList {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
   }
 
   .navItem {
@@ -2499,6 +2895,20 @@ tbody tr.selectedRow {
   .inlineButton,
   .dangerButton {
     justify-content: center;
+  }
+
+  .reportMonthControls,
+  .monthPicker {
+    width: 100%;
+  }
+
+  .reportMonthControls {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) 40px;
+  }
+
+  .reportMonthControls .secondaryButton {
+    grid-column: 1 / -1;
   }
 
   .connectionBanner {
@@ -2529,6 +2939,39 @@ tbody tr.selectedRow {
 
   .obstacleItem {
     grid-template-columns: minmax(0, 1fr) 72px;
+  }
+
+  .unallocatedTreatmentItem {
+    grid-template-columns: 1fr;
+  }
+
+  .clientOrderItem {
+    grid-template-columns: 1fr;
+  }
+
+  .clientSessionBar {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .clientSessionBar .secondaryButton {
+    width: 100%;
+  }
+
+  .clientOrderItemActions {
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-content: stretch;
+  }
+
+  .clientOrderItemActions .secondaryButton,
+  .clientOrderItemActions .inlineButton {
+    width: 100%;
+  }
+
+  .unallocatedTreatmentActions {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .obstacleItem .statusChip {

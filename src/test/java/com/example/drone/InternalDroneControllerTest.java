@@ -26,6 +26,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class InternalDroneControllerTest {
 
+    private static final String INTERNAL_API_KEY = "test-internal-key";
+
     private MockMvc mockMvc;
     private InMemoryDroneStorage storage;
 
@@ -36,6 +38,7 @@ class InternalDroneControllerTest {
 
         mockMvc = MockMvcBuilders.standaloneSetup(new InternalDroneController(queryService))
                 .setControllerAdvice(new ApiExceptionHandler())
+                .addFilters(new InternalApiAuthenticationFilter(INTERNAL_API_KEY))
                 .build();
     }
 
@@ -54,7 +57,8 @@ class InternalDroneControllerTest {
                 12.0
         ));
 
-        mockMvc.perform(get("/internal/drones/1/battery"))
+        mockMvc.perform(get("/internal/drones/1/battery")
+                        .header(InternalApiAuthenticationFilter.HEADER_NAME, INTERNAL_API_KEY))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1))
                 .andExpect(jsonPath("$.identifier").value("DRONE-1"))
@@ -67,10 +71,26 @@ class InternalDroneControllerTest {
 
     @Test
     void shouldReturnNotFoundWhenDroneDoesNotExist() throws Exception {
-        mockMvc.perform(get("/internal/drones/999/battery"))
+        mockMvc.perform(get("/internal/drones/999/battery")
+                        .header(InternalApiAuthenticationFilter.HEADER_NAME, INTERNAL_API_KEY))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("drone not found"))
                 .andExpect(content().string(not(containsString("trace"))));
+    }
+
+    @Test
+    void shouldRejectInternalRequestWithoutApiKey() throws Exception {
+        mockMvc.perform(get("/internal/drones/1/battery"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("internal api key is required"));
+    }
+
+    @Test
+    void shouldRejectInternalRequestWithInvalidApiKey() throws Exception {
+        mockMvc.perform(get("/internal/drones/1/battery")
+                        .header(InternalApiAuthenticationFilter.HEADER_NAME, "wrong-key"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("internal api key is required"));
     }
 
     private static class InMemoryDroneStorage implements DroneStorage {

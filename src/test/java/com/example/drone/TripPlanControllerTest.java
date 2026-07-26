@@ -217,9 +217,14 @@ class TripPlanControllerTest {
                 .andExpect(jsonPath("$.unallocatedOrders.length()").value(1))
                 .andExpect(jsonPath("$.unallocatedOrders[0].orderId").value(order.getId()))
                 .andExpect(jsonPath("$.unallocatedOrders[0].orderIdentifier").value("ORDER-1"))
-                .andExpect(jsonPath("$.unallocatedOrders[0].reason").value("order cannot be served by any drone"));
+                .andExpect(jsonPath("$.unallocatedOrders[0].reason")
+                        .value("Pedido não pode ser atendido por nenhum drone no planejamento atual."));
 
         assertEquals(OrderStatus.UNALLOCATED, orderStorage.findAll().get(0).getStatus());
+        assertEquals(
+                "Pedido não pode ser atendido por nenhum drone no planejamento atual.",
+                orderStorage.findAll().get(0).getStatusReason()
+        );
     }
 
     @Test
@@ -270,9 +275,14 @@ class TripPlanControllerTest {
                 .andExpect(jsonPath("$.unallocatedOrders.length()").value(1))
                 .andExpect(jsonPath("$.unallocatedOrders[0].orderId").value(order.getId()))
                 .andExpect(jsonPath("$.unallocatedOrders[0].orderIdentifier").value("ORDER-1"))
-                .andExpect(jsonPath("$.unallocatedOrders[0].reason").value("order exceeds max drone weight capacity"));
+                .andExpect(jsonPath("$.unallocatedOrders[0].reason")
+                        .value("Pedido excede a capacidade máxima de peso dos drones disponíveis."));
 
         assertEquals(OrderStatus.UNALLOCATED, orderStorage.findAll().get(0).getStatus());
+        assertEquals(
+                "Pedido excede a capacidade máxima de peso dos drones disponíveis.",
+                orderStorage.findAll().get(0).getStatusReason()
+        );
     }
 
     @Test
@@ -298,9 +308,13 @@ class TripPlanControllerTest {
                 .andExpect(jsonPath("$.unallocatedOrders[0].orderId").value(order.getId()))
                 .andExpect(jsonPath("$.unallocatedOrders[0].orderIdentifier").value("ORDER-1"))
                 .andExpect(jsonPath("$.unallocatedOrders[0].reason")
-                        .value("order exceeds drone battery for complete trip and safe return"));
+                        .value("Pedido exige mais bateria do que a frota disponível possui para concluir a rota e retornar em segurança."));
 
         assertEquals(OrderStatus.UNALLOCATED, orderStorage.findAll().get(0).getStatus());
+        assertEquals(
+                "Pedido exige mais bateria do que a frota disponível possui para concluir a rota e retornar em segurança.",
+                orderStorage.findAll().get(0).getStatusReason()
+        );
         assertEquals(DroneStatus.CHARGING, drone.getStatus());
         assertEquals("drone battery is insufficient for requested orders", drone.getRechargeReason());
         org.junit.jupiter.api.Assertions.assertNotNull(drone.getRechargeQueuedAt());
@@ -391,6 +405,13 @@ class TripPlanControllerTest {
         }
 
         @Override
+        public List<OrderEntity> findByClientUserId(Long clientUserId) {
+            return ordersById.values().stream()
+                    .filter(order -> order.getClientUser() != null && order.getClientUser().getId().equals(clientUserId))
+                    .toList();
+        }
+
+        @Override
         public List<OrderEntity> findDeliveryQueue() {
             return ordersById.values().stream()
                     .filter(order -> order.getStatus() == OrderStatus.REQUESTED
@@ -410,8 +431,11 @@ class TripPlanControllerTest {
                     order.getWeight(),
                     order.getPriority(),
                     order.getStatus(),
-                    order.getQueuedAt()
+                    order.getQueuedAt(),
+                    order.getDeliveryConfirmationCode(),
+                    order.getConfirmedDeliveryTime()
             );
+            savedOrder.changeStatus(savedOrder.getStatus(), order.getStatusReason());
 
             ordersById.put(savedOrder.getId(), savedOrder);
 

@@ -19,4 +19,8 @@ public interface DroneStorage {
     List<DroneEntity> findRechargeQueue();
 
     DroneEntity save(DroneEntity drone);
+
+    default void delete(DroneEntity drone) {
+        throw new UnsupportedOperationException("delete not implemented");
+    }
 }

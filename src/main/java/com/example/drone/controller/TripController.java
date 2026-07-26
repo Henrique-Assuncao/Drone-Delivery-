@@ -69,12 +69,41 @@ public class TripController {
     }
 
     @PostMapping("/{id}/route/{routePosition}/deliver")
-    public TripResponse deliverRoutePosition(@PathVariable Long id, @PathVariable int routePosition) {
-        return toResponse(transitionService.deliverRoutePosition(id, routePosition));
+    public TripResponse deliverRoutePosition(
+            @PathVariable Long id,
+            @PathVariable int routePosition,
+            @RequestBody(required = false) DeliveryConfirmationRequest request
+    ) {
+        if (request == null) {
+            throw new InvalidInputException("request body must not be null");
+        }
+
+        return toResponse(transitionService.deliverRoutePosition(
+                id,
+                routePosition,
+                request.confirmationCodeOrThrow()
+        ));
+    }
+
+    @PostMapping("/{id}/route/{routePosition}/availability")
+    public TripResponse confirmRouteAvailability(
+            @PathVariable Long id,
+            @PathVariable int routePosition,
+            @RequestBody(required = false) DeliveryAvailabilityRequest request
+    ) {
+        if (request == null) {
+            throw new InvalidInputException("request body must not be null");
+        }
+
+        return toResponse(transitionService.confirmRouteAvailability(
+                id,
+                routePosition,
+                request.availableOrThrow()
+        ));
     }
 
     @PostMapping("/{id}/telemetry")
-    public TripResponse reportTelemetry(@PathVariable Long id, @RequestBody TripTelemetryRequest request) {
+    public TripResponse reportTelemetry(@PathVariable Long id, @RequestBody(required = false) TripTelemetryRequest request) {
         if (request == null) {
             throw new InvalidInputException("request body must not be null");
         }
@@ -98,7 +127,14 @@ public class TripController {
                         tripOrder.getRoutePosition(),
                         tripOrder.isDelivered(),
                         tripOrder.getDeliveredAt(),
-                        tripOrder.getEstimatedDeliveryTime()
+                        tripOrder.getEstimatedDeliveryTime(),
+                        tripOrder.getAvailabilityNotifiedAt(),
+                        tripOrder.getAvailabilityConfirmedAt(),
+                        DeliveryAvailabilityPolicy.responseDeadlineFor(tripOrder),
+                        tripOrder.getDeliveryConfirmationRequestedAt(),
+                        DeliveryAvailabilityPolicy.deliveryConfirmationDeadlineFor(tripOrder),
+                        tripOrder.getDeliveryFailedAt(),
+                        tripOrder.getDeliveryFailureReason()
                 ))
                 .toList();
 
@@ -147,7 +183,20 @@ public class TripController {
             boolean delivered,
             @JsonFormat(shape = JsonFormat.Shape.STRING)
             Instant deliveredAt,
-            double estimatedDeliveryTime
+            double estimatedDeliveryTime,
+            @JsonFormat(shape = JsonFormat.Shape.STRING)
+            Instant availabilityNotifiedAt,
+            @JsonFormat(shape = JsonFormat.Shape.STRING)
+            Instant availabilityConfirmedAt,
+            @JsonFormat(shape = JsonFormat.Shape.STRING)
+            Instant availabilityResponseDeadline,
+            @JsonFormat(shape = JsonFormat.Shape.STRING)
+            Instant deliveryConfirmationRequestedAt,
+            @JsonFormat(shape = JsonFormat.Shape.STRING)
+            Instant deliveryConfirmationDeadline,
+            @JsonFormat(shape = JsonFormat.Shape.STRING)
+            Instant deliveryFailedAt,
+            String deliveryFailureReason
     ) {
     }
 
@@ -159,6 +208,28 @@ public class TripController {
             }
 
             return batteryLevel;
+        }
+    }
+
+    public record DeliveryConfirmationRequest(String confirmationCode) {
+
+        String confirmationCodeOrThrow() {
+            if (confirmationCode == null || confirmationCode.isBlank()) {
+                throw new InvalidInputException("delivery confirmation code must not be blank");
+            }
+
+            return confirmationCode;
+        }
+    }
+
+    public record DeliveryAvailabilityRequest(Boolean available) {
+
+        boolean availableOrThrow() {
+            if (available == null) {
+                throw new InvalidInputException("available must not be null");
+            }
+
+            return available;
         }
     }
 

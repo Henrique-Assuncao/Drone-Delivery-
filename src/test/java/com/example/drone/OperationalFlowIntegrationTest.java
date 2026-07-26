@@ -6,6 +6,7 @@ import com.example.drone.exception.*;
 import com.example.drone.persistence.*;
 import com.example.drone.service.*;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,12 +34,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class OperationalFlowIntegrationTest {
 
     private static final String SCHEMA = "it_" + UUID.randomUUID().toString().replace("-", "");
+    private static final String INTERNAL_API_KEY = "test-internal-key";
 
     @Autowired
     private MockMvc mockMvc;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @DynamicPropertySource
     static void configurePostgresSchema(DynamicPropertyRegistry registry) {
@@ -49,6 +54,7 @@ class OperationalFlowIntegrationTest {
         registry.add("spring.flyway.default-schema", () -> SCHEMA);
         registry.add("spring.flyway.create-schemas", () -> "true");
         registry.add("spring.jpa.properties.hibernate.default_schema", () -> SCHEMA);
+        registry.add("drone.internal.api-key", () -> INTERNAL_API_KEY);
     }
 
     @BeforeEach
@@ -64,7 +70,7 @@ class OperationalFlowIntegrationTest {
     @Test
     void shouldCompletePersistedOperationalFlow() throws Exception {
         createDrone("DRONE-INTEGRATION-1");
-        createOrder("ORDER-INTEGRATION-1");
+        String deliveryConfirmationCode = createOrder("ORDER-INTEGRATION-1");
 
         mockMvc.perform(post("/api/trip-plans"))
                 .andExpect(status().isOk())
@@ -101,6 +107,39 @@ class OperationalFlowIntegrationTest {
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].id").value(1))
                 .andExpect(jsonPath("$[0].status").value("IN_ROUTE"));
+
+        mockMvc.perform(post("/api/trips/1/simulation/tick")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "elapsedMinutes": 5.0
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("IN_ROUTE"))
+                .andExpect(jsonPath("$.nextOrderId").value(1))
+                .andExpect(jsonPath("$.moving").value(false));
+
+        mockMvc.perform(post("/api/trips/1/route/0/availability")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "available": true
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.routeProgress[0].availabilityConfirmedAt").exists());
+
+        mockMvc.perform(post("/api/trips/1/route/0/deliver")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "confirmationCode": "%s"
+                                }
+                                """.formatted(deliveryConfirmationCode)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.routeProgress[0].delivered").value(true))
+                .andExpect(jsonPath("$.status").value("IN_ROUTE"));
 
         mockMvc.perform(post("/api/trips/1/complete"))
                 .andExpect(status().isOk())
@@ -186,6 +225,7 @@ class OperationalFlowIntegrationTest {
         createOrder("ORDER-OLD");
 
         mockMvc.perform(post("/internal/demo/reset-and-seed")
+                        .header(InternalApiAuthenticationFilter.HEADER_NAME, INTERNAL_API_KEY)
                         .param("confirmation", InternalDemoController.RESET_CONFIRMATION))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.drones").value(3))
@@ -223,8 +263,8 @@ class OperationalFlowIntegrationTest {
                 .andExpect(jsonPath("$.status").value("AVAILABLE"));
     }
 
-    private void createOrder(String identifier) throws Exception {
-        mockMvc.perform(post("/api/orders")
+    private String createOrder(String identifier) throws Exception {
+        String responseBody = mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -234,12 +274,19 @@ class OperationalFlowIntegrationTest {
                                     "y": 4.0
                                   },
                                   "weight": 4.0,
-                                  "priority": "HIGH"
+                                  "priority": "HIGH",
+                                  "confirmedDeliveryTime": "2026-07-26T18:30:00Z"
                                 }
                                 """.formatted(identifier)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(1))
                 .andExpect(jsonPath("$.identifier").value(identifier))
-                .andExpect(jsonPath("$.status").value("REQUESTED"));
+                .andExpect(jsonPath("$.status").value("REQUESTED"))
+                .andExpect(jsonPath("$.deliveryConfirmationCode").value(identifier))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        return objectMapper.readTree(responseBody).get("deliveryConfirmationCode").asText();
     }
 }

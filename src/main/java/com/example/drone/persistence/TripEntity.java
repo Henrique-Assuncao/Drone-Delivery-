@@ -221,6 +221,55 @@ public class TripEntity {
     }
 
     public void addOrder(OrderEntity order, int routePosition, Instant deliveredAt, double estimatedDeliveryTime) {
-        tripOrders.add(new TripOrderEntity(this, order, routePosition, deliveredAt, estimatedDeliveryTime));
+        addOrder(order, routePosition, deliveredAt, estimatedDeliveryTime, null, null);
+    }
+
+    public void addOrder(
+            OrderEntity order,
+            int routePosition,
+            Instant deliveredAt,
+            double estimatedDeliveryTime,
+            Instant availabilityNotifiedAt,
+            Instant availabilityConfirmedAt
+    ) {
+        addOrder(
+                order,
+                routePosition,
+                deliveredAt,
+                estimatedDeliveryTime,
+                availabilityNotifiedAt,
+                availabilityConfirmedAt,
+                null,
+                null,
+                null
+        );
+    }
+
+    public void addOrder(
+            OrderEntity order,
+            int routePosition,
+            Instant deliveredAt,
+            double estimatedDeliveryTime,
+            Instant availabilityNotifiedAt,
+            Instant availabilityConfirmedAt,
+            Instant deliveryConfirmationRequestedAt,
+            Instant deliveryFailedAt,
+            String deliveryFailureReason
+    ) {
+        TripOrderEntity tripOrder = new TripOrderEntity(this, order, routePosition, deliveredAt, estimatedDeliveryTime);
+        if (availabilityNotifiedAt != null) {
+            tripOrder.markAvailabilityNotified(availabilityNotifiedAt);
+        }
+        if (availabilityConfirmedAt != null) {
+            tripOrder.markAvailabilityConfirmed(availabilityConfirmedAt);
+        }
+        if (deliveryConfirmationRequestedAt != null) {
+            tripOrder.markDeliveryConfirmationRequested(deliveryConfirmationRequestedAt);
+        }
+        if (deliveryFailedAt != null) {
+            tripOrder.markDeliveryFailed(deliveryFailedAt, deliveryFailureReason);
+        }
+
+        tripOrders.add(tripOrder);
     }
 }

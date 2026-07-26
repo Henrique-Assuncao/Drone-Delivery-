@@ -40,6 +40,21 @@ public class TripOrderEntity {
     @Column(name = "estimated_delivery_time", nullable = false)
     private double estimatedDeliveryTime;
 
+    @Column(name = "availability_notified_at")
+    private Instant availabilityNotifiedAt;
+
+    @Column(name = "availability_confirmed_at")
+    private Instant availabilityConfirmedAt;
+
+    @Column(name = "delivery_confirmation_requested_at")
+    private Instant deliveryConfirmationRequestedAt;
+
+    @Column(name = "delivery_failed_at")
+    private Instant deliveryFailedAt;
+
+    @Column(name = "delivery_failure_reason")
+    private String deliveryFailureReason;
+
     protected TripOrderEntity() {
     }
 
@@ -105,11 +120,94 @@ public class TripOrderEntity {
         return estimatedDeliveryTime;
     }
 
+    public Instant getAvailabilityNotifiedAt() {
+        return availabilityNotifiedAt;
+    }
+
+    public Instant getAvailabilityConfirmedAt() {
+        return availabilityConfirmedAt;
+    }
+
+    public Instant getDeliveryConfirmationRequestedAt() {
+        return deliveryConfirmationRequestedAt;
+    }
+
+    public Instant getDeliveryFailedAt() {
+        return deliveryFailedAt;
+    }
+
+    public String getDeliveryFailureReason() {
+        return deliveryFailureReason;
+    }
+
     public boolean isDelivered() {
         return deliveredAt != null;
     }
 
+    public boolean isDeliveryFailed() {
+        return deliveryFailedAt != null;
+    }
+
+    public boolean isResolved() {
+        return isDelivered() || isDeliveryFailed();
+    }
+
+    public boolean isAvailabilityConfirmed() {
+        return availabilityConfirmedAt != null;
+    }
+
+    public void markAvailabilityNotified(Instant notifiedAt) {
+        if (notifiedAt == null) {
+            throw new InvalidInputException("notifiedAt must not be null");
+        }
+
+        if (availabilityNotifiedAt == null) {
+            availabilityNotifiedAt = notifiedAt;
+        }
+    }
+
+    public void markAvailabilityConfirmed(Instant confirmedAt) {
+        if (confirmedAt == null) {
+            throw new InvalidInputException("confirmedAt must not be null");
+        }
+
+        if (availabilityNotifiedAt == null) {
+            availabilityNotifiedAt = confirmedAt;
+        }
+
+        availabilityConfirmedAt = confirmedAt;
+    }
+
+    public void markDeliveryConfirmationRequested(Instant requestedAt) {
+        if (requestedAt == null) {
+            throw new InvalidInputException("requestedAt must not be null");
+        }
+
+        if (deliveryConfirmationRequestedAt == null) {
+            deliveryConfirmationRequestedAt = requestedAt;
+        }
+    }
+
+    public void markDeliveryFailed(Instant failedAt, String reason) {
+        if (failedAt == null) {
+            throw new InvalidInputException("failedAt must not be null");
+        }
+
+        if (reason == null || reason.isBlank()) {
+            throw new InvalidInputException("delivery failure reason must not be blank");
+        }
+
+        if (deliveryFailedAt == null) {
+            deliveryFailedAt = failedAt;
+            deliveryFailureReason = reason.trim();
+        }
+    }
+
     public void markDelivered() {
+        if (deliveryFailedAt != null) {
+            throw new InvalidInputException("route position already marked not delivered");
+        }
+
         if (deliveredAt == null) {
             deliveredAt = Instant.now();
         }

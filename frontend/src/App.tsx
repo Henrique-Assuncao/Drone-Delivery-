@@ -4,12 +4,18 @@ import {
   BarChart3,
   BatteryFull,
   BatteryCharging,
+  CalendarDays,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Circle,
   Clock3,
   Eye,
   Flag,
+  KeyRound,
   ListChecks,
+  LogIn,
+  LogOut,
   MapPin,
   MessageSquareText,
   PackageCheck,
@@ -23,27 +29,40 @@ import {
   Send,
   Star,
   Trash2,
+  UserPlus,
   Weight,
   XCircle
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   advanceTripSimulation,
+  cancelOrder,
+  confirmTripRouteDelivery,
+  confirmTripRouteAvailability,
   createDemoScenario,
   createDrone,
+  createClientOrder,
   createObstacle,
   createOrder,
   createReview,
   deactivateObstacle,
   isApiUnavailableError,
   loadDashboardSnapshot,
+  loadClientOrders,
+  loadCurrentClient,
   loadTripTelemetryHistory,
+  loginClient,
   performDroneAction,
   performTripAction,
   planTrips,
+  requeueOrder,
+  registerClient,
   type DemoScenarioResult
 } from "./api";
 import type {
+  ClientAuthPayload,
+  ClientRegisterPayload,
+  ClientUser,
   CreateDronePayload,
   CreateObstaclePayload,
   CreateOrderPayload,
@@ -62,6 +81,7 @@ import type {
   Review,
   Trip,
   TripAction,
+  TripSimulation,
   TripTelemetry,
   TripPlan,
   TripStatus
@@ -85,6 +105,7 @@ const orderStatuses: OrderStatus[] = [
   "IN_ROUTE",
   "PENDING_REASSIGNMENT",
   "DELIVERED",
+  "NOT_DELIVERED",
   "UNALLOCATED",
   "CANCELLED"
 ];
@@ -94,45 +115,52 @@ const tableViews = ["drones", "orders", "trips"] as const;
 const mapRouteModes = ["selected", "all"] as const;
 const simulationTickIntervalMs = 2500;
 const simulationTickMinutes = 1;
+const approachNotificationWindowMinutes = 2;
+const clientAuthTokenStorageKey = "droneDelivery.clientAuthToken";
 
 type Experience = "admin" | "client";
 type AdminSection = "overview" | "operations" | "planning" | "feedback";
-type ClientSection = "order" | "tracking" | "reviews";
+type ClientSection = "order" | "myOrders" | "tracking" | "reviews";
+type ClientAuthMode = "login" | "register";
 type TableView = (typeof tableViews)[number];
 type MapRouteMode = (typeof mapRouteModes)[number];
 type PlanningAction = "createDrone" | "createOrder" | "createObstacle" | "createReview" | "planTrips";
+type OrderAction = "cancel" | "requeue";
 type JourneyStatus = "done" | "ready" | "optional" | "pending";
 type ApiStatus = "checking" | "online" | "offline";
-type RouteProgressStatus = "DELIVERED" | "PENDING";
+type ActionMessageTone = "success" | "error" | "info";
+type RouteProgressStatus = "DELIVERED" | "NOT_DELIVERED" | "PENDING";
 type ObstacleDisplayStatus = "ACTIVE" | "INACTIVE";
 
 const droneStatusLabels: Record<DroneStatus, string> = {
-  AVAILABLE: "Disponivel",
+  AVAILABLE: "Disponível",
   IN_ROUTE: "Em rota",
   CHARGING: "Em recarga",
-  UNAVAILABLE: "Indisponivel"
+  UNAVAILABLE: "Indisponível"
 };
 
 const orderStatusLabels: Record<OrderStatus, string> = {
   REQUESTED: "Solicitado",
   ALLOCATED: "Alocado",
   IN_ROUTE: "Em rota",
-  PENDING_REASSIGNMENT: "Aguardando reatribuicao",
+  PENDING_REASSIGNMENT: "Aguardando reatribuição",
   DELIVERED: "Entregue",
+  NOT_DELIVERED: "Não entregue",
   CANCELLED: "Cancelado",
-  UNALLOCATED: "Nao alocado"
+  UNALLOCATED: "Não alocado"
 };
 
 const tripStatusLabels: Record<TripStatus, string> = {
   PLANNED: "Planejada",
   IN_ROUTE: "Em rota",
   RETURNED_EARLY: "Retorno antecipado",
-  COMPLETED: "Concluida",
+  COMPLETED: "Concluída",
   CANCELLED: "Cancelada"
 };
 
 const routeProgressStatusLabels: Record<RouteProgressStatus, string> = {
   DELIVERED: "Entregue",
+  NOT_DELIVERED: "Não entregue",
   PENDING: "Pendente"
 };
 
@@ -151,6 +179,13 @@ const tripRouteColors = ["#15616d", "#2b5c9e", "#a56013", "#257a4f", "#7a4f9a", 
 interface TripActionOptions {
   routePosition?: number;
   batteryLevel?: number;
+  confirmationCode?: string;
+}
+
+interface OrderCancellationDraft {
+  orderId: number;
+  identifier: string;
+  reason: string;
 }
 
 interface JourneyStep {
@@ -180,6 +215,7 @@ interface OrderFormState {
   y: string;
   weight: string;
   priority: Priority;
+  confirmedDeliveryTime: string;
 }
 
 interface ObstacleFormState {
@@ -198,6 +234,31 @@ interface ClientOrderFormState {
   x: string;
   y: string;
   weight: string;
+  confirmedDeliveryTime: string;
+}
+
+interface ClientAuthFormState {
+  name: string;
+  email: string;
+  password: string;
+}
+
+interface ArrivalNotificationState {
+  key: string;
+  tripId: number;
+  routePosition: number;
+  orderId: number;
+  orderIdentifier: string;
+  droneId: number;
+  deadline: string | null;
+}
+
+interface ClientOrderListItem {
+  identifier: string;
+  order: Order;
+  trip: Trip | null;
+  routeProgress: Trip["routeProgress"][number] | null;
+  selected: boolean;
 }
 
 interface MapPoint {
@@ -258,7 +319,8 @@ const initialOrderForm: OrderFormState = {
   x: "",
   y: "",
   weight: "",
-  priority: "HIGH"
+  priority: "HIGH",
+  confirmedDeliveryTime: ""
 };
 
 const initialObstacleForm: ObstacleFormState = {
@@ -276,7 +338,14 @@ const initialReviewForm: ReviewFormState = {
 const initialClientOrderForm: ClientOrderFormState = {
   x: "",
   y: "",
-  weight: ""
+  weight: "",
+  confirmedDeliveryTime: ""
+};
+
+const initialClientAuthForm: ClientAuthFormState = {
+  name: "",
+  email: "",
+  password: ""
 };
 
 function App() {
@@ -288,22 +357,37 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [reportMonth, setReportMonth] = useState(currentReportMonth());
+  const [reportMonthLoading, setReportMonthLoading] = useState(false);
   const [activeTable, setActiveTable] = useState<TableView>("drones");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [droneActionInFlight, setDroneActionInFlight] = useState<{ id: number; action: DroneAction } | null>(null);
+  const [orderActionInFlight, setOrderActionInFlight] = useState<{ id: number; action: OrderAction } | null>(null);
   const [tripActionInFlight, setTripActionInFlight] = useState<{ id: number; action: TripAction } | null>(null);
   const [planningActionInFlight, setPlanningActionInFlight] = useState<PlanningAction | null>(null);
   const [obstacleActionInFlight, setObstacleActionInFlight] = useState<number | null>(null);
   const [demoActionInFlight, setDemoActionInFlight] = useState(false);
   const [demoConfirmationOpen, setDemoConfirmationOpen] = useState(false);
-  const [actionMessage, setActionMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+  const [orderCancellationDraft, setOrderCancellationDraft] = useState<OrderCancellationDraft | null>(null);
+  const [arrivalNotification, setArrivalNotification] = useState<ArrivalNotificationState | null>(null);
+  const [availabilityResponseInFlight, setAvailabilityResponseInFlight] = useState(false);
+  const [actionMessage, setActionMessage] = useState<{ tone: ActionMessageTone; text: string } | null>(null);
   const [telemetryDrafts, setTelemetryDrafts] = useState<Record<number, string>>({});
   const [droneForm, setDroneForm] = useState<DroneFormState>(initialDroneForm);
   const [orderForm, setOrderForm] = useState<OrderFormState>(initialOrderForm);
   const [clientOrderForm, setClientOrderForm] = useState<ClientOrderFormState>(initialClientOrderForm);
   const [clientTrackingTerm, setClientTrackingTerm] = useState("");
+  const [clientAuthToken, setClientAuthToken] = useState<string | null>(() => loadClientAuthToken());
+  const [clientUser, setClientUser] = useState<ClientUser | null>(null);
+  const [clientOrders, setClientOrders] = useState<Order[]>([]);
+  const [clientOrdersLoading, setClientOrdersLoading] = useState(false);
+  const [clientAuthMode, setClientAuthMode] = useState<ClientAuthMode>("login");
+  const [clientAuthForm, setClientAuthForm] = useState<ClientAuthFormState>(initialClientAuthForm);
+  const [clientAuthInFlight, setClientAuthInFlight] = useState(false);
   const [trackingCodeDialog, setTrackingCodeDialog] = useState<string | null>(null);
+  const [deliveryConfirmationCode, setDeliveryConfirmationCode] = useState("");
+  const [deliveryConfirmationInFlight, setDeliveryConfirmationInFlight] = useState<number | null>(null);
   const [obstacleForm, setObstacleForm] = useState<ObstacleFormState>(initialObstacleForm);
   const [reviewForm, setReviewForm] = useState<ReviewFormState>(initialReviewForm);
   const [optimizeRoute, setOptimizeRoute] = useState(true);
@@ -312,18 +396,28 @@ function App() {
   const [telemetryHistory, setTelemetryHistory] = useState<TripTelemetry[]>([]);
   const [telemetryLoading, setTelemetryLoading] = useState(false);
   const [telemetryError, setTelemetryError] = useState<string | null>(null);
+  const snapshotRef = useRef(snapshot);
+  const approachNotificationKeysRef = useRef<Set<string>>(new Set());
+  const availabilityNotificationKeysRef = useRef<Set<string>>(new Set());
 
-  async function refresh(showLoading = true) {
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+  }, [snapshot]);
+
+  async function refresh(showLoading = true, requestedReportMonth = reportMonth) {
     if (showLoading) {
       setLoading(true);
     }
     setError(null);
 
     try {
-      const data = await loadDashboardSnapshot();
+      const data = await loadDashboardSnapshot(requestedReportMonth);
       setSnapshot(data);
       setApiStatus("online");
       setUpdatedAt(new Date());
+      if (clientAuthToken) {
+        await refreshClientOrders(clientAuthToken);
+      }
     } catch (exception) {
       setApiStatus(isApiUnavailableError(exception) ? "offline" : "online");
       setError(exception instanceof Error ? exception.message : "Falha ao carregar dados");
@@ -346,6 +440,124 @@ function App() {
     setActiveExperience(experience);
     setActionMessage(null);
     setError(null);
+    if (experience !== "client") {
+      setArrivalNotification(null);
+    }
+  }
+
+  async function handleReportMonthChange(month: string) {
+    if (!month) {
+      return;
+    }
+
+    setReportMonth(month);
+    setReportMonthLoading(true);
+
+    try {
+      await refresh(false, month);
+    } finally {
+      setReportMonthLoading(false);
+    }
+  }
+
+  function handleReportMonthStep(offset: number) {
+    void handleReportMonthChange(shiftReportMonth(reportMonth, offset));
+  }
+
+  function handleClientOrderSelect(identifier: string) {
+    setClientTrackingTerm(identifier);
+    setActiveClientSection("tracking");
+  }
+
+  async function refreshClientSession(authToken: string) {
+    setClientOrdersLoading(true);
+
+    try {
+      const [user, orders] = await Promise.all([
+        loadCurrentClient(authToken),
+        loadClientOrders(authToken)
+      ]);
+      setClientUser(user);
+      setClientOrders(orders);
+      setApiStatus("online");
+    } catch (exception) {
+      clearClientSession();
+      if (activeExperience === "client") {
+        setActionMessage({
+          tone: "error",
+          text: operationErrorMessageFor(exception, "Sessão do cliente expirada")
+        });
+      }
+    } finally {
+      setClientOrdersLoading(false);
+    }
+  }
+
+  async function refreshClientOrders(authToken: string) {
+    setClientOrdersLoading(true);
+
+    try {
+      setClientOrders(await loadClientOrders(authToken));
+    } catch (exception) {
+      clearClientSession();
+      if (activeExperience === "client") {
+        setActionMessage({
+          tone: "error",
+          text: operationErrorMessageFor(exception, "Falha ao carregar meus pedidos")
+        });
+      }
+    } finally {
+      setClientOrdersLoading(false);
+    }
+  }
+
+  function clearClientSession() {
+    saveClientAuthToken(null);
+    setClientAuthToken(null);
+    setClientUser(null);
+    setClientOrders([]);
+    setClientTrackingTerm("");
+    setDeliveryConfirmationCode("");
+  }
+
+  async function handleClientAuthSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setClientAuthInFlight(true);
+    setActionMessage(null);
+    setError(null);
+
+    try {
+      const response = clientAuthMode === "register"
+        ? await registerClient(toClientRegisterPayload(clientAuthForm))
+        : await loginClient(toClientAuthPayload(clientAuthForm));
+
+      saveClientAuthToken(response.token);
+      setClientAuthToken(response.token);
+      setClientUser(response.user);
+      setClientAuthForm(initialClientAuthForm);
+      setActiveClientSection("myOrders");
+      setActionMessage({
+        tone: "success",
+        text: `${response.user.name} conectado.`
+      });
+      await refreshClientOrders(response.token);
+    } catch (exception) {
+      setActionMessage({
+        tone: "error",
+        text: operationErrorMessageFor(exception, clientAuthMode === "register" ? "Falha ao criar conta" : "Falha ao entrar")
+      });
+    } finally {
+      setClientAuthInFlight(false);
+    }
+  }
+
+  function handleClientLogout() {
+    clearClientSession();
+    setActiveClientSection("order");
+    setActionMessage({
+      tone: "info",
+      text: "Sessão encerrada."
+    });
   }
 
   async function handleDroneAction(id: number, action: DroneAction) {
@@ -363,10 +575,59 @@ function App() {
     } catch (exception) {
       setActionMessage({
         tone: "error",
-        text: operationErrorMessageFor(exception, "Falha ao executar acao")
+        text: operationErrorMessageFor(exception, "Falha ao executar ação")
       });
     } finally {
       setDroneActionInFlight(null);
+    }
+  }
+
+  async function handleOrderRequeue(id: number) {
+    setOrderActionInFlight({ id, action: "requeue" });
+    setActionMessage(null);
+    setError(null);
+
+    try {
+      const order = await requeueOrder(id);
+      setActionMessage({
+        tone: "success",
+        text: `${order.identifier} voltou para a fila de planejamento.`
+      });
+      await refresh(false);
+    } catch (exception) {
+      setActionMessage({
+        tone: "error",
+        text: operationErrorMessageFor(exception, "Falha ao reenviar pedido")
+      });
+    } finally {
+      setOrderActionInFlight(null);
+    }
+  }
+
+  async function handleCancelUnallocatedOrder() {
+    if (!orderCancellationDraft) {
+      return;
+    }
+
+    setOrderActionInFlight({ id: orderCancellationDraft.orderId, action: "cancel" });
+    setActionMessage(null);
+    setError(null);
+
+    try {
+      const order = await cancelOrder(orderCancellationDraft.orderId, orderCancellationDraft.reason);
+      setOrderCancellationDraft(null);
+      setActionMessage({
+        tone: "success",
+        text: `${order.identifier} cancelado com justificativa.`
+      });
+      await refresh(false);
+    } catch (exception) {
+      setActionMessage({
+        tone: "error",
+        text: operationErrorMessageFor(exception, "Falha ao cancelar pedido")
+      });
+    } finally {
+      setOrderActionInFlight(null);
     }
   }
 
@@ -391,7 +652,7 @@ function App() {
     } catch (exception) {
       setActionMessage({
         tone: "error",
-        text: operationErrorMessageFor(exception, "Falha ao executar acao")
+        text: operationErrorMessageFor(exception, "Falha ao executar ação")
       });
     } finally {
       setTripActionInFlight(null);
@@ -469,8 +730,12 @@ function App() {
     setError(null);
 
     try {
+      if (!clientAuthToken) {
+        throw new Error("Faça login para solicitar entregas.");
+      }
+
       const trackingCode = generateTrackingCode(snapshot.orders);
-      const order = await createOrder(toClientOrderPayload(clientOrderForm, trackingCode));
+      const order = await createClientOrder(toClientOrderPayload(clientOrderForm, trackingCode), clientAuthToken);
       setClientOrderForm(initialClientOrderForm);
       setClientTrackingTerm(order.identifier);
       setTrackingCodeDialog(order.identifier);
@@ -489,6 +754,62 @@ function App() {
     }
   }
 
+  async function handleConfirmClientDelivery(tripId: number, routePosition: number) {
+    setDeliveryConfirmationInFlight(tripId);
+    setActionMessage(null);
+    setError(null);
+
+    try {
+      const trip = await confirmTripRouteDelivery(tripId, routePosition, deliveryConfirmationCode);
+      setDeliveryConfirmationCode("");
+      setActionMessage({
+        tone: "success",
+        text: `Entrega da viagem #${trip.id} confirmada pelo cliente.`
+      });
+      await refresh(false);
+    } catch (exception) {
+      setActionMessage({
+        tone: "error",
+        text: operationErrorMessageFor(exception, "Falha ao confirmar entrega")
+      });
+    } finally {
+      setDeliveryConfirmationInFlight(null);
+    }
+  }
+
+  async function handleDeliveryAvailabilityResponse(available: boolean) {
+    if (!arrivalNotification) {
+      return;
+    }
+
+    setAvailabilityResponseInFlight(true);
+    setActionMessage(null);
+    setError(null);
+
+    try {
+      const trip = await confirmTripRouteAvailability(
+        arrivalNotification.tripId,
+        arrivalNotification.routePosition,
+        available
+      );
+      setArrivalNotification(null);
+      setActionMessage({
+        tone: available ? "success" : "info",
+        text: available
+          ? `Disponibilidade confirmada para a viagem #${trip.id}. Informe o código quando o drone parar no endereço.`
+          : `O drone da viagem #${trip.id} está retornando para a base com o pacote.`
+      });
+      await refresh(false);
+    } catch (exception) {
+      setActionMessage({
+        tone: "error",
+        text: operationErrorMessageFor(exception, "Falha ao responder disponibilidade")
+      });
+    } finally {
+      setAvailabilityResponseInFlight(false);
+    }
+  }
+
   async function handleCreateObstacle(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPlanningActionInFlight("createObstacle");
@@ -500,13 +821,13 @@ function App() {
       setObstacleForm(initialObstacleForm);
       setActionMessage({
         tone: "success",
-        text: `Obstaculo #${obstacle.id} cadastrado.`
+        text: `Obstáculo #${obstacle.id} cadastrado.`
       });
       await refresh(false);
     } catch (exception) {
       setActionMessage({
         tone: "error",
-        text: operationErrorMessageFor(exception, "Falha ao cadastrar obstaculo")
+        text: operationErrorMessageFor(exception, "Falha ao cadastrar obstáculo")
       });
     } finally {
       setPlanningActionInFlight(null);
@@ -522,13 +843,13 @@ function App() {
       const obstacle = await deactivateObstacle(id);
       setActionMessage({
         tone: "success",
-        text: `Obstaculo #${obstacle.id} desativado.`
+        text: `Obstáculo #${obstacle.id} desativado.`
       });
       await refresh(false);
     } catch (exception) {
       setActionMessage({
         tone: "error",
-        text: operationErrorMessageFor(exception, "Falha ao desativar obstaculo")
+        text: operationErrorMessageFor(exception, "Falha ao desativar obstáculo")
       });
     } finally {
       setObstacleActionInFlight(null);
@@ -546,13 +867,13 @@ function App() {
       setReviewForm(initialReviewForm);
       setActionMessage({
         tone: "success",
-        text: `Avaliacao #${review.id} registrada com ${review.stars} estrelas.`
+        text: `Avaliação #${review.id} registrada com ${review.stars} estrelas.`
       });
       await refresh(false);
     } catch (exception) {
       setActionMessage({
         tone: "error",
-        text: operationErrorMessageFor(exception, "Falha ao cadastrar avaliacao")
+        text: operationErrorMessageFor(exception, "Falha ao cadastrar avaliação")
       });
     } finally {
       setPlanningActionInFlight(null);
@@ -591,6 +912,9 @@ function App() {
 
     try {
       const result = await createDemoScenario();
+      approachNotificationKeysRef.current.clear();
+      availabilityNotificationKeysRef.current.clear();
+      setArrivalNotification(null);
       setActionMessage({
         tone: "success",
         text: demoScenarioSuccessMessageFor(result)
@@ -634,6 +958,12 @@ function App() {
   useEffect(() => {
     void refresh();
   }, []);
+
+  useEffect(() => {
+    if (clientAuthToken) {
+      void refreshClientSession(clientAuthToken);
+    }
+  }, [clientAuthToken]);
 
   useEffect(() => {
     if (activeExperience !== "client" || apiStatus === "offline") {
@@ -714,6 +1044,19 @@ function App() {
               tone: "error",
               text: operationErrorMessageFor(failedTick.reason, "Falha ao simular viagem")
             });
+          } else {
+            const notification = approachingDeliveryNotificationFor(
+              results,
+              snapshotRef.current,
+              approachNotificationKeysRef.current
+            );
+
+            if (notification && activeExperience !== "client") {
+              setActionMessage({
+                tone: "info",
+                text: notification
+              });
+            }
           }
 
           await refresh(false);
@@ -725,7 +1068,7 @@ function App() {
 
           setActionMessage({
             tone: "error",
-            text: operationErrorMessageFor(exception, "Falha ao atualizar simulacao")
+            text: operationErrorMessageFor(exception, "Falha ao atualizar simulação")
           });
         })
         .finally(() => {
@@ -737,7 +1080,31 @@ function App() {
       active = false;
       window.clearInterval(intervalId);
     };
-  }, [simulatableTripKey, apiStatus]);
+  }, [simulatableTripKey, apiStatus, activeExperience]);
+
+  useEffect(() => {
+    if (activeExperience !== "client") {
+      return;
+    }
+
+    if (arrivalNotification && !isAvailabilityNotificationPending(snapshot, arrivalNotification)) {
+      setArrivalNotification(null);
+      return;
+    }
+
+    if (arrivalNotification) {
+      return;
+    }
+
+    const notification = nextAvailabilityNotification(snapshot, availabilityNotificationKeysRef.current);
+    if (!notification) {
+      return;
+    }
+
+    availabilityNotificationKeysRef.current.add(notification.key);
+    setArrivalNotification(notification);
+    playNotificationSound();
+  }, [activeExperience, arrivalNotification, snapshot]);
 
   const journeySteps = useMemo(
     () => buildJourneySteps(snapshot, selectedTrip, telemetryHistory),
@@ -746,15 +1113,19 @@ function App() {
   const completedJourneySteps = journeySteps.filter((step) => step.status === "done").length;
   const actionBusy =
     droneActionInFlight !== null ||
+    orderActionInFlight !== null ||
     tripActionInFlight !== null ||
     planningActionInFlight !== null ||
     obstacleActionInFlight !== null ||
+    deliveryConfirmationInFlight !== null ||
+    availabilityResponseInFlight ||
+    clientAuthInFlight ||
     demoActionInFlight ||
     apiStatus === "offline";
 
   return (
     <div className="appShell">
-      <aside className="sidebar" aria-label="Navegacao principal">
+      <aside className="sidebar" aria-label="Navegação principal">
         <div className="brandBlock">
           <div className="brandMark">DD</div>
           <div>
@@ -763,7 +1134,7 @@ function App() {
           </div>
         </div>
 
-        <div className="experienceSwitch" role="tablist" aria-label="Selecionar experiencia">
+        <div className="experienceSwitch" role="tablist" aria-label="Selecionar experiência">
           <button
             type="button"
             className={activeExperience === "admin" ? "selected" : ""}
@@ -784,7 +1155,7 @@ function App() {
           </button>
         </div>
 
-        <nav className="navList" aria-label="Menu da experiencia">
+        <nav className="navList" aria-label="Menu da experiência">
           {activeExperience === "admin" ? (
             <>
               <button
@@ -799,7 +1170,7 @@ function App() {
                 type="button"
                 onClick={() => setActiveAdminSection("operations")}
               >
-                Operacao
+                Operação
               </button>
               <button
                 className={activeAdminSection === "planning" ? "navItem active" : "navItem"}
@@ -826,6 +1197,13 @@ function App() {
                 Solicitar
               </button>
               <button
+                className={activeClientSection === "myOrders" ? "navItem active" : "navItem"}
+                type="button"
+                onClick={() => setActiveClientSection("myOrders")}
+              >
+                Meus pedidos
+              </button>
+              <button
                 className={activeClientSection === "tracking" ? "navItem active" : "navItem"}
                 type="button"
                 onClick={() => setActiveClientSection("tracking")}
@@ -837,7 +1215,7 @@ function App() {
                 type="button"
                 onClick={() => setActiveClientSection("reviews")}
               >
-                Avaliacoes
+                Avaliações
               </button>
             </>
           )}
@@ -847,7 +1225,7 @@ function App() {
       <main className="dashboard">
         <header className="topbar">
           <div>
-            <p className="eyebrow">{activeExperience === "admin" ? "Painel operacional" : "Area do cliente"}</p>
+            <p className="eyebrow">{activeExperience === "admin" ? "Painel operacional" : "Área do cliente"}</p>
             <h1>
               {activeExperience === "admin"
                 ? adminSectionTitle(activeAdminSection)
@@ -864,7 +1242,7 @@ function App() {
                 type="button"
                 onClick={() => setDemoConfirmationOpen(true)}
                 disabled={actionBusy}
-                title="Limpa os dados operacionais atuais e recria o cenario demo apos confirmacao"
+                title="Limpa os dados operacionais atuais e recria o cenário demo após confirmação"
               >
                 {demoActionInFlight ? (
                   <RefreshCcw className="spinIcon" size={16} aria-hidden="true" />
@@ -911,6 +1289,8 @@ function App() {
           <section className={`actionBanner ${actionMessage.tone}`} role="status">
             {actionMessage.tone === "success" ? (
               <CheckCircle2 size={18} aria-hidden="true" />
+            ) : actionMessage.tone === "info" ? (
+              <Plane size={18} aria-hidden="true" />
             ) : (
               <AlertTriangle size={18} aria-hidden="true" />
             )}
@@ -921,7 +1301,7 @@ function App() {
         {demoConfirmationOpen ? (
           <ConfirmationDialog
             title="Recriar demo"
-            detail="Essa acao limpa os dados operacionais atuais e recria o cenario de simulacao."
+            detail="Essa ação limpa os dados operacionais atuais e recria o cenário de simulação."
             confirmLabel="Recriar demo"
             cancelLabel="Cancelar"
             busy={demoActionInFlight}
@@ -941,6 +1321,27 @@ function App() {
           />
         ) : null}
 
+        {orderCancellationDraft ? (
+          <OrderCancellationDialog
+            draft={orderCancellationDraft}
+            busy={isBusy(orderActionInFlight, orderCancellationDraft.orderId, "cancel")}
+            onReasonChange={(reason) =>
+              setOrderCancellationDraft((current) => (current ? { ...current, reason } : current))
+            }
+            onCancel={() => setOrderCancellationDraft(null)}
+            onConfirm={() => void handleCancelUnallocatedOrder()}
+          />
+        ) : null}
+
+        {arrivalNotification ? (
+          <ArrivalNotificationDialog
+            notification={arrivalNotification}
+            busy={availabilityResponseInFlight}
+            onConfirm={() => void handleDeliveryAvailabilityResponse(true)}
+            onDecline={() => void handleDeliveryAvailabilityResponse(false)}
+          />
+        ) : null}
+
         {activeExperience === "admin" ? (
           <>
         {activeAdminSection === "overview" ? (
@@ -948,7 +1349,7 @@ function App() {
         <section id="overview" className="metricGrid" aria-label="Resumo operacional">
           <MetricCard
             icon={<Plane size={21} />}
-            label="Drones disponiveis"
+            label="Drones disponíveis"
             value={metrics.availableDrones}
             detail={`${metrics.dronesInRoute} em rota`}
           />
@@ -972,19 +1373,27 @@ function App() {
           />
           <MetricCard
             icon={<Clock3 size={21} />}
-            label="Tempo medio"
+            label="Tempo médio"
             value={formatDuration(metrics.averageDeliveryTime)}
-            detail="ate entrega"
+            detail="até entrega"
           />
           <MetricCard
             icon={<Star size={21} />}
-            label="Avaliacao media"
+            label="Avaliação média"
             value={metrics.averageStars ? metrics.averageStars.toFixed(1) : "-"}
-            detail={`${snapshot.reviews.length} avaliacoes`}
+            detail={`${snapshot.reviews.length} avaliações`}
           />
         </section>
 
-        <ProductivityReportPanel report={snapshot.productivityReport} />
+        <ProductivityReportPanel
+          report={snapshot.productivityReport}
+          selectedMonth={reportMonth}
+          loading={reportMonthLoading}
+          onMonthChange={(month) => void handleReportMonthChange(month)}
+          onPreviousMonth={() => handleReportMonthStep(-1)}
+          onNextMonth={() => handleReportMonthStep(1)}
+          onCurrentMonth={() => void handleReportMonthChange(currentReportMonth())}
+        />
 
         <section className="contentGrid">
           <section id="fleet" className="panel">
@@ -1003,7 +1412,7 @@ function App() {
           </section>
 
           <section className="panel">
-            <PanelHeader title="Atencao" count={alerts.length} />
+            <PanelHeader title="Atenção" count={alerts.length} />
             <div className="alertList">
               {alerts.length ? (
                 alerts.map((alert) => (
@@ -1087,6 +1496,26 @@ function App() {
             rechargeQueue={snapshot.rechargeQueue}
           />
         </section>
+
+        <section id="unallocated-orders" className="commandSection" aria-label="Tratamento de pedidos não alocados">
+          <div className="operationHeader">
+            <div>
+              <p className="eyebrow">Tratamento operacional</p>
+              <h2>Pedidos não alocados</h2>
+            </div>
+            <span className="recordCount">
+              {snapshot.orders.filter((order) => order.status === "UNALLOCATED").length} pendentes
+            </span>
+          </div>
+
+          <UnallocatedOrderTreatmentPanel
+            orders={snapshot.orders.filter((order) => order.status === "UNALLOCATED")}
+            onCancelOrder={(order) => setOrderCancellationDraft({ orderId: order.id, identifier: order.identifier, reason: "" })}
+            onRequeueOrder={handleOrderRequeue}
+            actionInFlight={orderActionInFlight}
+            actionBusy={actionBusy}
+          />
+        </section>
           </>
         ) : null}
 
@@ -1129,11 +1558,11 @@ function App() {
           </div>
         </section>
 
-        <section id="obstacles" className="commandSection" aria-label="Gestao de obstaculos">
+        <section id="obstacles" className="commandSection" aria-label="Gestão de obstáculos">
           <div className="operationHeader">
             <div>
-              <p className="eyebrow">Restricoes de rota</p>
-              <h2>Obstaculos</h2>
+              <p className="eyebrow">Restrições de rota</p>
+              <h2>Obstáculos</h2>
             </div>
             <span className="recordCount">{metrics.activeObstacles} ativos</span>
           </div>
@@ -1154,14 +1583,14 @@ function App() {
 
         {activeAdminSection === "feedback" ? (
           <>
-        <section id="reviews" className="commandSection" aria-label="Avaliacoes do servico">
+        <section id="reviews" className="commandSection" aria-label="Avaliações do serviço">
           <div className="operationHeader">
             <div>
               <p className="eyebrow">Feedback do cliente</p>
-              <h2>Avaliacoes</h2>
+              <h2>Avaliações</h2>
             </div>
             <span className="recordCount">
-              {metrics.averageStars ? metrics.averageStars.toFixed(1) : "-"} media
+              {metrics.averageStars ? metrics.averageStars.toFixed(1) : "-"} média
             </span>
           </div>
 
@@ -1248,10 +1677,13 @@ function App() {
             activeTable={activeTable}
             rows={tableData}
             onDroneAction={handleDroneAction}
+            onCancelOrder={(order) => setOrderCancellationDraft({ orderId: order.id, identifier: order.identifier, reason: "" })}
+            onRequeueOrder={handleOrderRequeue}
             onTripAction={handleTripAction}
             onSelectTrip={setSelectedTripId}
             selectedTripId={selectedTripId}
             droneActionInFlight={droneActionInFlight}
+            orderActionInFlight={orderActionInFlight}
             tripActionInFlight={tripActionInFlight}
             actionBusy={actionBusy}
             telemetryDrafts={telemetryDrafts}
@@ -1270,10 +1702,25 @@ function App() {
             orderBusy={planningActionInFlight === "createOrder"}
             trackingTerm={clientTrackingTerm}
             onTrackingTermChange={setClientTrackingTerm}
+            clientUser={clientUser}
+            clientOrders={clientOrders}
+            clientOrdersLoading={clientOrdersLoading}
+            authMode={clientAuthMode}
+            authForm={clientAuthForm}
+            authBusy={clientAuthInFlight}
+            onAuthModeChange={setClientAuthMode}
+            onAuthFormChange={(field, value) => setClientAuthForm((current) => ({ ...current, [field]: value }))}
+            onAuthSubmit={handleClientAuthSubmit}
+            onLogout={handleClientLogout}
+            onClientOrderSelect={handleClientOrderSelect}
             reviewForm={reviewForm}
             onReviewFormChange={(field, value) => setReviewForm((current) => ({ ...current, [field]: value }))}
             onReviewSubmit={handleCreateReview}
             reviewBusy={planningActionInFlight === "createReview"}
+            deliveryConfirmationCode={deliveryConfirmationCode}
+            onDeliveryConfirmationCodeChange={setDeliveryConfirmationCode}
+            onDeliveryConfirm={handleConfirmClientDelivery}
+            deliveryConfirmationInFlight={deliveryConfirmationInFlight}
             actionBusy={actionBusy}
           />
         )}
@@ -1359,9 +1806,9 @@ function TripDetailPanel({
         <DetailStat label="Pedidos" value={trip.orders.length} />
         <DetailStat label="Progresso" value={`${deliveredCount(trip)} / ${trip.routeProgress.length}`} />
         <DetailStat label="Peso" value={formatNumber(trip.totalWeight)} />
-        <DetailStat label="Distancia" value={formatNumber(trip.totalDistance)} />
-        <DetailStat label="Duracao" value={formatDuration(trip.estimatedDuration)} />
-        <DetailStat label="Tempo medio" value={formatDuration(trip.averageDeliveryTime)} />
+        <DetailStat label="Distância" value={formatNumber(trip.totalDistance)} />
+        <DetailStat label="Duração" value={formatDuration(trip.estimatedDuration)} />
+        <DetailStat label="Tempo médio" value={formatDuration(trip.averageDeliveryTime)} />
       </div>
 
       <OperationMap
@@ -1379,32 +1826,37 @@ function TripDetailPanel({
           <ToolHeader icon={<Route size={18} />} title="Rota" />
           <div className="routeProgressList">
             {routeProgress.length ? (
-              routeProgress.map((progress) => (
-                <article className="routeStep" key={`${progress.routePosition}-${progress.orderId}`}>
-                  <div className={progress.delivered ? "routeStepMarker delivered" : "routeStepMarker"}>
-                    {progress.routePosition + 1}
-                  </div>
-                  <div className="routeStepMain">
-                    <div className="routeStepHeader">
-                      <strong>Pedido #{progress.orderId}</strong>
-                      <span className={`statusChip ${progress.delivered ? "delivered" : "requested"}`}>
-                        {routeProgressStatusLabel(progress.delivered ? "DELIVERED" : "PENDING")}
-                      </span>
+              routeProgress.map((progress) => {
+                const displayStatus = routeProgressDisplayStatus(progress);
+
+                return (
+                  <article className="routeStep" key={`${progress.routePosition}-${progress.orderId}`}>
+                    <div className={`routeStepMarker ${routeProgressMarkerClass(displayStatus)}`}>
+                      {progress.routePosition + 1}
                     </div>
-                    <div className="routeStepMeta">
-                      <span>{formatDuration(progress.estimatedDeliveryTime)}</span>
-                      <span>{formatNullableDateTime(progress.deliveredAt)}</span>
+                    <div className="routeStepMain">
+                      <div className="routeStepHeader">
+                        <strong>Pedido #{progress.orderId}</strong>
+                        <span className={`statusChip ${statusChipClass(displayStatus)}`}>
+                          {routeProgressStatusLabel(displayStatus)}
+                        </span>
+                      </div>
+                      <div className="routeStepMeta">
+                        <span>{formatDuration(progress.estimatedDeliveryTime)}</span>
+                        <span>{formatNullableDateTime(progress.deliveredAt ?? progress.deliveryFailedAt)}</span>
+                      </div>
+                      {progress.deliveryFailureReason ? <p className="routeStepReason">{progress.deliveryFailureReason}</p> : null}
                     </div>
-                  </div>
-                </article>
-              ))
+                  </article>
+                );
+              })
             ) : (
               <p className="emptyState">Sem progresso de rota registrado.</p>
             )}
           </div>
         </section>
 
-        <section className="detailSubpanel" aria-label="Historico de telemetria">
+        <section className="detailSubpanel" aria-label="Histórico de telemetria">
           <ToolHeader icon={<BatteryCharging size={18} />} title="Telemetria" />
           {telemetryError ? (
             <p className="detailError">{telemetryError}</p>
@@ -1455,12 +1907,12 @@ function OperationMap({
   const orderHighlights = buildMapOrderHighlights(routeLayers);
 
   return (
-    <section className="detailSubpanel mapPanel" aria-label="Mapa 2D da operacao">
+    <section className="detailSubpanel mapPanel" aria-label="Mapa 2D da operação">
       <div className="mapHeader">
         <ToolHeader icon={<MapPin size={18} />} title="Mapa 2D" />
         <div className="mapControls">
           {showRouteControls ? (
-            <div className="mapModeControl" role="tablist" aria-label="Visualizacao de rotas no mapa">
+            <div className="mapModeControl" role="tablist" aria-label="Visualização de rotas no mapa">
               {mapRouteModes.map((mode) => (
                 <button
                   type="button"
@@ -1485,7 +1937,7 @@ function OperationMap({
             <span><i className="legendLine planned" />Planejada</span>
             <span><i className="legendLine inRoute" />Em rota</span>
             <span><i className="legendLine returned" />Retorno</span>
-            <span><i className="legendObstacle" />Obstaculo</span>
+            <span><i className="legendObstacle" />Obstáculo</span>
           </div>
         </div>
       </div>
@@ -1509,7 +1961,7 @@ function OperationMap({
             ))}
           </div>
         ) : (
-          <p className="mapHint">Nenhuma rota disponivel para exibicao.</p>
+          <p className="mapHint">Nenhuma rota disponível para exibição.</p>
         )
       ) : null}
 
@@ -1537,7 +1989,7 @@ function OperationMap({
             <div
               className={obstacle.active ? "mapObstacle active" : "mapObstacle"}
               key={obstacle.id}
-              title={`Obstaculo #${obstacle.id}`}
+              title={`Obstáculo #${obstacle.id}`}
               style={{
                 left: `${position.left}%`,
                 top: `${position.top}%`,
@@ -1611,10 +2063,25 @@ function ClientExperience({
   orderBusy,
   trackingTerm,
   onTrackingTermChange,
+  clientUser,
+  clientOrders,
+  clientOrdersLoading,
+  authMode,
+  authForm,
+  authBusy,
+  onAuthModeChange,
+  onAuthFormChange,
+  onAuthSubmit,
+  onLogout,
+  onClientOrderSelect,
   reviewForm,
   onReviewFormChange,
   onReviewSubmit,
   reviewBusy,
+  deliveryConfirmationCode,
+  onDeliveryConfirmationCodeChange,
+  onDeliveryConfirm,
+  deliveryConfirmationInFlight,
   actionBusy
 }: {
   activeSection: ClientSection;
@@ -1625,32 +2092,66 @@ function ClientExperience({
   orderBusy: boolean;
   trackingTerm: string;
   onTrackingTermChange: (value: string) => void;
+  clientUser: ClientUser | null;
+  clientOrders: Order[];
+  clientOrdersLoading: boolean;
+  authMode: ClientAuthMode;
+  authForm: ClientAuthFormState;
+  authBusy: boolean;
+  onAuthModeChange: (mode: ClientAuthMode) => void;
+  onAuthFormChange: (field: keyof ClientAuthFormState, value: string) => void;
+  onAuthSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  onLogout: () => void;
+  onClientOrderSelect: (identifier: string) => void;
   reviewForm: ReviewFormState;
   onReviewFormChange: (field: keyof ReviewFormState, value: string | number) => void;
   onReviewSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   reviewBusy: boolean;
+  deliveryConfirmationCode: string;
+  onDeliveryConfirmationCodeChange: (value: string) => void;
+  onDeliveryConfirm: (tripId: number, routePosition: number) => void;
+  deliveryConfirmationInFlight: number | null;
   actionBusy: boolean;
 }) {
-  const selectedOrder = findClientOrder(snapshot.orders, trackingTerm);
+  if (!clientUser) {
+    return (
+      <section className="clientExperience">
+        <ClientAuthPanel
+          mode={authMode}
+          form={authForm}
+          busy={authBusy}
+          actionBusy={actionBusy}
+          onModeChange={onAuthModeChange}
+          onChange={onAuthFormChange}
+          onSubmit={onAuthSubmit}
+        />
+      </section>
+    );
+  }
+
+  const selectedOrder = findClientOrder(clientOrders, trackingTerm);
   const selectedTrip = selectedOrder ? findTripForOrder(snapshot.trips, selectedOrder.id) : null;
   const selectedRouteProgress = selectedTrip && selectedOrder ? routeProgressForOrder(selectedTrip, selectedOrder.id) : null;
   const clientMapOrders = selectedTrip ? snapshot.orders.filter((order) => selectedTrip.route.includes(order.id)) : [];
   const estimatedDeliveryTime = selectedRouteProgress ? formatDuration(selectedRouteProgress.estimatedDeliveryTime) : "-";
+  const clientOrderItems = buildClientOrderList(clientOrders, snapshot.trips, trackingTerm);
 
   return (
     <section className="clientExperience">
+      <ClientSessionBar user={clientUser} onLogout={onLogout} actionBusy={actionBusy} />
+
       <section className="clientMetricGrid" aria-label="Resumo do cliente">
         <MetricCard
           icon={<PackageCheck size={21} />}
           label="Pedido"
           value={selectedOrder ? selectedOrder.identifier : "-"}
-          detail={selectedOrder ? orderStatusLabel(selectedOrder.status) : "sem selecao"}
+          detail={selectedOrder ? orderStatusLabel(selectedOrder.status) : "sem seleção"}
         />
         <MetricCard
           icon={<Clock3 size={21} />}
           label="Tempo estimado"
           value={estimatedDeliveryTime}
-          detail="ate entrega"
+          detail="até entrega"
         />
         <MetricCard
           icon={<Route size={21} />}
@@ -1659,10 +2160,16 @@ function ClientExperience({
           detail={selectedTrip ? tripStatusLabel(selectedTrip.status) : "aguardando"}
         />
         <MetricCard
+          icon={<ListChecks size={21} />}
+          label="Meus pedidos"
+          value={clientOrders.length}
+          detail={clientOrdersLoading ? "atualizando" : "na conta"}
+        />
+        <MetricCard
           icon={<Star size={21} />}
-          label="Avaliacoes"
+          label="Avaliações"
           value={snapshot.reviews.length}
-          detail={`${average(snapshot.reviews.map((review) => review.stars)).toFixed(1)} media`}
+          detail={`${average(snapshot.reviews.map((review) => review.stars)).toFixed(1)} média`}
         />
       </section>
 
@@ -1681,6 +2188,29 @@ function ClientExperience({
           routeProgress={selectedRouteProgress}
           trackingTerm={trackingTerm}
           onTrackingTermChange={onTrackingTermChange}
+          confirmationCode={deliveryConfirmationCode}
+          onConfirmationCodeChange={onDeliveryConfirmationCodeChange}
+          onConfirmDelivery={onDeliveryConfirm}
+          confirmationBusy={selectedTrip ? deliveryConfirmationInFlight === selectedTrip.id : false}
+          actionBusy={actionBusy}
+        />
+      </section>
+      ) : null}
+
+      {activeSection === "myOrders" ? (
+      <section id="client-my-orders" className="commandSection" aria-label="Meus pedidos">
+        <div className="operationHeader">
+          <div>
+            <p className="eyebrow">Pedidos</p>
+            <h2>Meus pedidos</h2>
+          </div>
+          <span className="recordCount">{clientOrderItems.length} registros</span>
+        </div>
+
+        <ClientOrdersPanel
+          items={clientOrderItems}
+          onSelect={onClientOrderSelect}
+          actionBusy={actionBusy || clientOrdersLoading}
         />
       </section>
       ) : null}
@@ -1702,6 +2232,11 @@ function ClientExperience({
             routeProgress={selectedRouteProgress}
             trackingTerm={trackingTerm}
             onTrackingTermChange={onTrackingTermChange}
+            confirmationCode={deliveryConfirmationCode}
+            onConfirmationCodeChange={onDeliveryConfirmationCodeChange}
+            onConfirmDelivery={onDeliveryConfirm}
+            confirmationBusy={selectedTrip ? deliveryConfirmationInFlight === selectedTrip.id : false}
+            actionBusy={actionBusy}
           />
           {selectedTrip ? (
             <OperationMap
@@ -1722,11 +2257,11 @@ function ClientExperience({
       ) : null}
 
       {activeSection === "reviews" ? (
-      <section id="client-reviews" className="commandSection" aria-label="Avaliacoes publicas">
+      <section id="client-reviews" className="commandSection" aria-label="Avaliações públicas">
         <div className="operationHeader">
           <div>
             <p className="eyebrow">Feedback</p>
-            <h2>Avaliacoes</h2>
+            <h2>Avaliações</h2>
           </div>
           <span className="recordCount">{snapshot.reviews.length} registros</span>
         </div>
@@ -1742,6 +2277,173 @@ function ClientExperience({
       </section>
       ) : null}
     </section>
+  );
+}
+
+function ClientAuthPanel({
+  mode,
+  form,
+  busy,
+  actionBusy,
+  onModeChange,
+  onChange,
+  onSubmit
+}: {
+  mode: ClientAuthMode;
+  form: ClientAuthFormState;
+  busy: boolean;
+  actionBusy: boolean;
+  onModeChange: (mode: ClientAuthMode) => void;
+  onChange: (field: keyof ClientAuthFormState, value: string) => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  const isRegister = mode === "register";
+
+  return (
+    <section className="clientAuthLayout" aria-label="Acesso do cliente">
+      <form className="toolPanel clientAuthPanel" onSubmit={onSubmit}>
+        <ToolHeader icon={isRegister ? <UserPlus size={18} /> : <LogIn size={18} />} title={isRegister ? "Criar conta" : "Entrar"} />
+        <div className="segmentedControl" role="tablist" aria-label="Modo de acesso">
+          <button
+            type="button"
+            className={mode === "login" ? "selected" : ""}
+            onClick={() => onModeChange("login")}
+            role="tab"
+            aria-selected={mode === "login"}
+          >
+            Entrar
+          </button>
+          <button
+            type="button"
+            className={mode === "register" ? "selected" : ""}
+            onClick={() => onModeChange("register")}
+            role="tab"
+            aria-selected={mode === "register"}
+          >
+            Criar conta
+          </button>
+        </div>
+        {isRegister ? (
+          <TextField
+            label="Nome"
+            value={form.name}
+            onChange={(value) => onChange("name", value)}
+            required
+            icon={<UserPlus size={15} />}
+          />
+        ) : null}
+        <TextField
+          label="E-mail"
+          value={form.email}
+          onChange={(value) => onChange("email", value)}
+          required
+          icon={<MessageSquareText size={15} />}
+        />
+        <TextField
+          label="Senha"
+          value={form.password}
+          onChange={(value) => onChange("password", value)}
+          required
+          type="password"
+          icon={<KeyRound size={15} />}
+        />
+        <PrimaryButton
+          icon={isRegister ? <UserPlus size={17} /> : <LogIn size={17} />}
+          label={isRegister ? "Criar conta" : "Entrar"}
+          busy={busy}
+          disabled={actionBusy}
+        />
+      </form>
+
+      <section className="toolPanel clientAuthAside">
+        <ToolHeader icon={<PackageCheck size={18} />} title="Área Cliente" />
+        <div className="clientAuthBenefits">
+          <DetailStat label="Pedidos" value="Conta vinculada" />
+          <DetailStat label="Rastreio" value="Código único" />
+          <DetailStat label="Entrega" value="Confirmação segura" />
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function ClientSessionBar({
+  user,
+  onLogout,
+  actionBusy
+}: {
+  user: ClientUser;
+  onLogout: () => void;
+  actionBusy: boolean;
+}) {
+  return (
+    <section className="clientSessionBar" aria-label="Sessão do cliente">
+      <div>
+        <span>Cliente conectado</span>
+        <strong>{user.name}</strong>
+        <small>{user.email}</small>
+      </div>
+      <button className="secondaryButton compact" type="button" onClick={onLogout} disabled={actionBusy}>
+        <LogOut size={16} aria-hidden="true" />
+        <span>Sair</span>
+      </button>
+    </section>
+  );
+}
+
+function ClientOrdersPanel({
+  items,
+  onSelect,
+  actionBusy
+}: {
+  items: ClientOrderListItem[];
+  onSelect: (identifier: string) => void;
+  actionBusy: boolean;
+}) {
+  if (!items.length) {
+    return <p className="emptyState">Nenhum pedido solicitado por esta conta.</p>;
+  }
+
+  return (
+    <div className="clientOrdersList">
+      {items.map((item) => {
+        const order = item.order;
+        const trip = item.trip;
+        const routeProgress = item.routeProgress;
+        const statusLabel = orderStatusLabel(order.status);
+        const statusClass = orderStatusClass(order.status);
+
+        return (
+          <article className={item.selected ? "clientOrderItem selected" : "clientOrderItem"} key={item.identifier}>
+            <div className="clientOrderItemMain">
+              <div className="clientOrderItemHeader">
+                <strong>{item.identifier}</strong>
+                <span className={`statusChip ${statusClass}`}>{statusLabel}</span>
+              </div>
+              <div className="clientOrderItemMeta">
+                <span>{formatDateTime(order.confirmedDeliveryTime)}</span>
+                <span>{formatNumber(order.weight)} kg</span>
+                <span>{formatLocation(order.location.x, order.location.y)}</span>
+                <span>{trip ? `Viagem #${trip.id}` : "Sem viagem"}</span>
+                <span>{routeProgress ? formatDuration(routeProgress.estimatedDeliveryTime) : "-"}</span>
+              </div>
+              {order?.statusReason ? <p className="clientOrderItemReason">{localizedStatusReason(order.statusReason)}</p> : null}
+            </div>
+            <div className="clientOrderItemActions">
+              <button
+                className="secondaryButton compact"
+                type="button"
+                onClick={() => onSelect(item.identifier)}
+                disabled={actionBusy}
+              >
+                <Eye size={16} aria-hidden="true" />
+                <span>Ver</span>
+              </button>
+            </div>
+          </article>
+        );
+      })}
+    </div>
   );
 }
 
@@ -1790,6 +2492,14 @@ function ClientOrderForm({
           required
           icon={<MapPin size={15} />}
         />
+        <TextField
+          label="Horário confirmado"
+          type="datetime-local"
+          value={form.confirmedDeliveryTime}
+          onChange={(value) => onChange("confirmedDeliveryTime", value)}
+          required
+          icon={<Clock3 size={15} />}
+        />
       </div>
       <PrimaryButton icon={<Plus size={17} />} label="Solicitar entrega" busy={busy} disabled={actionBusy} />
     </form>
@@ -1801,19 +2511,31 @@ function ClientTrackingPanel({
   trip,
   routeProgress,
   trackingTerm,
-  onTrackingTermChange
+  onTrackingTermChange,
+  confirmationCode,
+  onConfirmationCodeChange,
+  onConfirmDelivery,
+  confirmationBusy,
+  actionBusy
 }: {
   order: Order | null;
   trip: Trip | null;
   routeProgress: Trip["routeProgress"][number] | null;
   trackingTerm: string;
   onTrackingTermChange: (value: string) => void;
+  confirmationCode: string;
+  onConfirmationCodeChange: (value: string) => void;
+  onConfirmDelivery: (tripId: number, routePosition: number) => void;
+  confirmationBusy: boolean;
+  actionBusy: boolean;
 }) {
+  const canConfirmDelivery = isDeliveryConfirmationAvailable(order, trip, routeProgress);
+
   return (
     <section className="toolPanel clientTrackingPanel">
       <ToolHeader icon={<Search size={18} />} title="Acompanhar pedido" />
       <label className="field">
-        <span>Codigo de rastreio</span>
+        <span>Código de rastreio e confirmação</span>
         <input
           type="search"
           value={trackingTerm}
@@ -1825,12 +2547,39 @@ function ClientTrackingPanel({
       {order ? (
         <>
           <div className="clientTrackingSummary">
-            <DetailStat label="Codigo" value={order.identifier} />
+            <DetailStat label="Código" value={order.identifier} />
             <DetailStat label="Status" value={orderStatusLabel(order.status)} />
             <DetailStat label="Tempo" value={routeProgress ? formatDuration(routeProgress.estimatedDeliveryTime) : "-"} />
+            <DetailStat label="Horário" value={formatDateTime(order.confirmedDeliveryTime)} />
             <DetailStat label="Drone" value={trip ? `#${trip.droneId}` : "-"} />
           </div>
+          <ClientOrderNotice order={order} />
+          <ClientDeliveryAvailabilityNotice order={order} trip={trip} routeProgress={routeProgress} />
           <ClientStatusTimeline order={order} />
+          <form
+            className="deliveryConfirmationForm"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (trip && routeProgress && canConfirmDelivery) {
+                onConfirmDelivery(trip.id, routeProgress.routePosition);
+              }
+            }}
+          >
+            <TextField
+              label="Código de rastreio e confirmação"
+              value={confirmationCode}
+              onChange={onConfirmationCodeChange}
+              required
+              icon={<KeyRound size={15} />}
+              disabled={!canConfirmDelivery || actionBusy}
+            />
+            <PrimaryButton
+              icon={<PackageCheck size={17} />}
+              label="Confirmar recebimento"
+              busy={confirmationBusy}
+              disabled={actionBusy || !canConfirmDelivery}
+            />
+          </form>
         </>
       ) : (
         <p className="emptyState">Nenhum pedido selecionado.</p>
@@ -1849,6 +2598,182 @@ function ClientStatusTimeline({ order }: { order: Order }) {
           <span aria-hidden="true" />
           <strong>{step.label}</strong>
         </div>
+      ))}
+    </div>
+  );
+}
+
+function ClientOrderNotice({ order }: { order: Order }) {
+  if (!["UNALLOCATED", "CANCELLED", "NOT_DELIVERED"].includes(order.status)) {
+    return null;
+  }
+
+  const titleByStatus: Record<"UNALLOCATED" | "CANCELLED" | "NOT_DELIVERED", string> = {
+    UNALLOCATED: "Pedido não alocado",
+    CANCELLED: "Entrega cancelada",
+    NOT_DELIVERED: "Pacote não entregue"
+  };
+  const reason = localizedStatusReason(order.statusReason);
+  const detailByStatus: Record<"UNALLOCATED" | "CANCELLED" | "NOT_DELIVERED", string> = {
+    UNALLOCATED:
+      "Não foi possível alocar esse pacote no planejamento atual. O admin deve cancelar com justificativa ou reenviar para planejamento.",
+    CANCELLED: "A entrega foi cancelada pelo admin.",
+    NOT_DELIVERED: "O drone retornou para a base com a encomenda."
+  };
+  const status = order.status as "UNALLOCATED" | "CANCELLED" | "NOT_DELIVERED";
+  const tone = order.status === "UNALLOCATED" ? "warning" : "error";
+
+  return (
+    <div className={`clientOrderNotice ${tone}`} role="status">
+      <AlertTriangle size={17} aria-hidden="true" />
+      <div>
+        <strong>{titleByStatus[status]}</strong>
+        <span>{reason ? `${detailByStatus[status]} Motivo: ${reason}` : detailByStatus[status]}</span>
+      </div>
+    </div>
+  );
+}
+
+function ClientDeliveryAvailabilityNotice({
+  order,
+  trip,
+  routeProgress
+}: {
+  order: Order;
+  trip: Trip | null;
+  routeProgress: Trip["routeProgress"][number] | null;
+}) {
+  if (!trip || !routeProgress || routeProgress.delivered || routeProgress.deliveryFailedAt || order.status !== "IN_ROUTE") {
+    return null;
+  }
+
+  if (routeProgress.availabilityConfirmedAt) {
+    const deadlineExpired =
+      routeProgress.deliveryConfirmationDeadline !== null &&
+      Date.now() > Date.parse(routeProgress.deliveryConfirmationDeadline);
+
+    if (deadlineExpired) {
+      return (
+        <div className="clientOrderNotice error" role="status">
+          <AlertTriangle size={17} aria-hidden="true" />
+          <div>
+            <strong>Prazo do código expirado</strong>
+            <span>O drone seguirá a rota e levará este pacote novamente para a base.</span>
+          </div>
+        </div>
+      );
+    }
+
+    const codeInstruction = routeProgress.deliveryConfirmationDeadline
+      ? `Confirme o recebimento com o código do pedido até ${formatDateTime(routeProgress.deliveryConfirmationDeadline)}.`
+      : "A confirmação por código ficará disponível quando o drone parar no endereço.";
+
+    return (
+      <div className="clientOrderNotice success" role="status">
+        <CheckCircle2 size={17} aria-hidden="true" />
+        <div>
+          <strong>Disponibilidade confirmada</strong>
+          <span>{codeInstruction}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (routeProgress.availabilityNotifiedAt) {
+    return (
+      <div className="clientOrderNotice warning" role="status">
+        <AlertTriangle size={17} aria-hidden="true" />
+        <div>
+          <strong>Confirme sua disponibilidade</strong>
+          <span>
+            Responda à notificação até {formatNullableDateTime(routeProgress.availabilityResponseDeadline)} para evitar que o drone
+            retorne à base com o pacote.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function UnallocatedOrderTreatmentPanel({
+  orders,
+  onCancelOrder,
+  onRequeueOrder,
+  actionInFlight,
+  actionBusy
+}: {
+  orders: Order[];
+  onCancelOrder: (order: Order) => void;
+  onRequeueOrder: (id: number) => void;
+  actionInFlight: { id: number; action: OrderAction } | null;
+  actionBusy: boolean;
+}) {
+  const sortedOrders = [...orders].sort((left, right) => Date.parse(left.queuedAt) - Date.parse(right.queuedAt) || left.id - right.id);
+
+  if (!sortedOrders.length) {
+    return <p className="tableEmpty">Nenhum pedido aguardando tratamento.</p>;
+  }
+
+  return (
+    <div className="unallocatedTreatmentList">
+      {sortedOrders.map((order) => (
+        <article className="unallocatedTreatmentItem" key={order.id}>
+          <div className="unallocatedTreatmentMain">
+            <div className="unallocatedTreatmentHeader">
+              <strong>{order.identifier}</strong>
+              <span className={`priorityChip ${order.priority.toLowerCase()}`}>{order.priority}</span>
+            </div>
+            <p>{localizedStatusReason(order.statusReason) ?? unallocatedOrderMessage(order)}</p>
+            <div className="queueMeta">
+              <span>
+                <Weight size={14} aria-hidden="true" />
+                {formatNumber(order.weight)}
+              </span>
+              <span>
+                <MapPin size={14} aria-hidden="true" />
+                {formatLocation(order.location.x, order.location.y)}
+              </span>
+              <span>
+                <CalendarDays size={14} aria-hidden="true" />
+                {formatDateTime(order.confirmedDeliveryTime)}
+              </span>
+              <span>
+                <Clock3 size={14} aria-hidden="true" />
+                {formatDateTime(order.queuedAt)}
+              </span>
+            </div>
+          </div>
+          <div className="unallocatedTreatmentActions">
+            <button
+              className="secondaryButton compact"
+              type="button"
+              onClick={() => onRequeueOrder(order.id)}
+              disabled={actionBusy}
+            >
+              {isBusy(actionInFlight, order.id, "requeue") ? (
+                <RefreshCcw className="spinIcon" size={16} aria-hidden="true" />
+              ) : (
+                <Route size={16} aria-hidden="true" />
+              )}
+              <span>Reenviar</span>
+            </button>
+            <button
+              className="dangerButton"
+              type="button"
+              onClick={() => onCancelOrder(order)}
+              disabled={actionBusy}
+            >
+              {isBusy(actionInFlight, order.id, "cancel") ? (
+                <RefreshCcw className="spinIcon" size={16} aria-hidden="true" />
+              ) : (
+                <XCircle size={16} aria-hidden="true" />
+              )}
+              <span>Cancelar</span>
+            </button>
+          </div>
+        </article>
       ))}
     </div>
   );
@@ -1879,7 +2804,7 @@ function QueueOverview({
         title="Reatribuicao"
         count={reassignmentOrders.length}
       >
-        <DeliveryQueueList entries={reassignmentOrders} emptyText="Nenhum pedido aguardando reatribuicao." />
+        <DeliveryQueueList entries={reassignmentOrders} emptyText="Nenhum pedido aguardando reatribuição." />
       </QueueColumn>
 
       <QueueColumn
@@ -1936,6 +2861,10 @@ function DeliveryQueueList({ entries, emptyText }: { entries: DeliveryQueueEntry
             <span>
               <MapPin size={14} aria-hidden="true" />
               {formatLocation(entry.location.x, entry.location.y)}
+            </span>
+            <span>
+              <CalendarDays size={14} aria-hidden="true" />
+              {formatDateTime(entry.confirmedDeliveryTime)}
             </span>
             <span>
               <Clock3 size={14} aria-hidden="true" />
@@ -2105,6 +3034,14 @@ function CreateOrderForm({
           required
           icon={<MapPin size={15} />}
         />
+        <TextField
+          label="Horário confirmado"
+          type="datetime-local"
+          value={form.confirmedDeliveryTime}
+          onChange={(value) => onChange("confirmedDeliveryTime", value)}
+          required
+          icon={<Clock3 size={15} />}
+        />
         <label className="field">
           <span>Prioridade</span>
           <select value={form.priority} onChange={(event) => onChange("priority", event.target.value as Priority)}>
@@ -2159,7 +3096,7 @@ function TripPlanningTool({
           <strong>{plannedTrips}</strong>
         </div>
         <div>
-          <span>Obstaculos</span>
+          <span>Obstáculos</span>
           <strong>{activeObstacles}</strong>
         </div>
       </div>
@@ -2199,7 +3136,7 @@ function ObstacleManager({
   return (
     <section className="toolPanel obstaclePanel">
       <form className="obstacleForm" onSubmit={onSubmit}>
-        <ToolHeader icon={<Ban size={18} />} title="Novo obstaculo" />
+        <ToolHeader icon={<Ban size={18} />} title="Novo obstáculo" />
         <div className="formGrid obstacleFormGrid">
           <TextField
             label="X"
@@ -2229,11 +3166,11 @@ function ObstacleManager({
             required
             icon={<Circle size={15} />}
           />
-          <PrimaryButton icon={<Plus size={17} />} label="Criar obstaculo" busy={busy} disabled={actionBusy} />
+          <PrimaryButton icon={<Plus size={17} />} label="Criar obstáculo" busy={busy} disabled={actionBusy} />
         </div>
       </form>
 
-      <div className="obstacleList" aria-label="Obstaculos cadastrados">
+      <div className="obstacleList" aria-label="Obstáculos cadastrados">
         {obstacles.length ? (
           obstacles.map((obstacle) => (
             <article className="obstacleItem" key={obstacle.id}>
@@ -2249,8 +3186,8 @@ function ObstacleManager({
                 {obstacleStatusLabel(obstacle.active ? "ACTIVE" : "INACTIVE")}
               </span>
               <ActionIconButton
-                label="Desativar obstaculo"
-                description="Desativa este obstaculo para que ele deixe de afetar novos planejamentos."
+                label="Desativar obstáculo"
+                description="Desativa este obstáculo para que ele deixe de afetar novos planejamentos."
                 icon={<Trash2 size={16} />}
                 disabled={actionBusy || !obstacle.active}
                 busy={obstacleActionInFlight === obstacle.id}
@@ -2259,7 +3196,7 @@ function ObstacleManager({
             </article>
           ))
         ) : (
-          <p className="emptyState">Nenhum obstaculo cadastrado.</p>
+          <p className="emptyState">Nenhum obstáculo cadastrado.</p>
         )}
       </div>
     </section>
@@ -2286,17 +3223,17 @@ function ReviewManager({
   return (
     <section className="reviewGrid">
       <form className="toolPanel reviewFormPanel" onSubmit={onSubmit}>
-        <ToolHeader icon={<Star size={18} />} title="Nova avaliacao" />
+        <ToolHeader icon={<Star size={18} />} title="Nova avaliação" />
         <label className="field">
           <span>Estrelas</span>
           <StarRating value={form.stars} onChange={(value) => onChange("stars", value)} disabled={actionBusy} />
         </label>
-        <TextField label="Titulo" value={form.title} onChange={(value) => onChange("title", value)} required />
+        <TextField label="Título" value={form.title} onChange={(value) => onChange("title", value)} required />
         <label className="field">
           <span>Feedback</span>
           <textarea value={form.feedback} onChange={(event) => onChange("feedback", event.target.value)} required />
         </label>
-        <PrimaryButton icon={<Plus size={17} />} label="Criar avaliacao" busy={busy} disabled={actionBusy} />
+        <PrimaryButton icon={<Plus size={17} />} label="Criar avaliação" busy={busy} disabled={actionBusy} />
       </form>
 
       <section className="toolPanel reviewListPanel" aria-label="Feedbacks registrados">
@@ -2316,7 +3253,7 @@ function ReviewManager({
               </article>
             ))
           ) : (
-            <p className="emptyState">Nenhuma avaliacao registrada.</p>
+            <p className="emptyState">Nenhuma avaliação registrada.</p>
           )}
         </div>
       </section>
@@ -2372,17 +3309,19 @@ function TextField({
   max,
   step,
   required = false,
-  icon
+  icon,
+  disabled = false
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
-  type?: "text" | "number";
+  type?: "text" | "number" | "datetime-local" | "password";
   min?: string;
   max?: string;
   step?: string;
   required?: boolean;
   icon?: React.ReactNode;
+  disabled?: boolean;
 }) {
   return (
     <label className="field">
@@ -2397,6 +3336,7 @@ function TextField({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           required={required}
+          disabled={disabled}
         />
       </div>
     </label>
@@ -2468,6 +3408,96 @@ function ConfirmationDialog({
   );
 }
 
+function OrderCancellationDialog({
+  draft,
+  busy,
+  onReasonChange,
+  onCancel,
+  onConfirm
+}: {
+  draft: OrderCancellationDraft;
+  busy: boolean;
+  onReasonChange: (reason: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const reasonIsBlank = !draft.reason.trim();
+
+  return (
+    <div className="modalBackdrop">
+      <section className="confirmationDialog" role="dialog" aria-modal="true" aria-labelledby="orderCancelTitle">
+        <div className="confirmationHeader">
+          <span aria-hidden="true">
+            <AlertTriangle size={18} />
+          </span>
+          <div>
+            <h2 id="orderCancelTitle">Cancelar pedido {draft.identifier}</h2>
+            <p>Informe a justificativa que será exibida para o cliente.</p>
+          </div>
+        </div>
+        <label className="field reasonField">
+          <span>Justificativa</span>
+          <textarea
+            value={draft.reason}
+            onChange={(event) => onReasonChange(event.target.value)}
+            placeholder="Ex.: Endereço fora da área atendida pela frota disponível."
+            disabled={busy}
+            required
+          />
+        </label>
+        <div className="confirmationActions">
+          <button className="secondaryButton compact" type="button" onClick={onCancel} disabled={busy}>
+            <XCircle size={16} aria-hidden="true" />
+            <span>Voltar</span>
+          </button>
+          <button className="dangerButton" type="button" onClick={onConfirm} disabled={busy || reasonIsBlank}>
+            {busy ? <RefreshCcw className="spinIcon" size={16} aria-hidden="true" /> : <Trash2 size={16} aria-hidden="true" />}
+            <span>Cancelar pedido</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ArrivalNotificationDialog({
+  notification,
+  busy,
+  onConfirm,
+  onDecline
+}: {
+  notification: ArrivalNotificationState;
+  busy: boolean;
+  onConfirm: () => void;
+  onDecline: () => void;
+}) {
+  return (
+    <div className="modalBackdrop">
+      <section className="arrivalNotificationDialog" role="alertdialog" aria-modal="true" aria-labelledby="arrivalTitle">
+        <div className="arrivalNotificationIcon" aria-hidden="true">
+          <Plane size={24} />
+        </div>
+        <p className="eyebrow">Entrega chegando</p>
+        <h2 id="arrivalTitle">Você está disponível para receber?</h2>
+        <p>
+          Drone #{notification.droneId} está chegando ao destino do pedido {notification.orderIdentifier}. Responda até{" "}
+          {formatNullableDateTime(notification.deadline)}; sem resposta, o drone retorna para a base com o pacote.
+        </p>
+        <div className="confirmationActions">
+          <button className="secondaryButton compact" type="button" onClick={onDecline} disabled={busy}>
+            <XCircle size={16} aria-hidden="true" />
+            <span>Não posso receber</span>
+          </button>
+          <button className="primaryButton compact" type="button" onClick={onConfirm} disabled={busy}>
+            {busy ? <RefreshCcw className="spinIcon" size={16} aria-hidden="true" /> : <CheckCircle2 size={16} aria-hidden="true" />}
+            <span>Estou disponível</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function TrackingCodeDialog({
   code,
   onClose,
@@ -2484,9 +3514,12 @@ function TrackingCodeDialog({
           <CheckCircle2 size={22} />
         </div>
         <p className="eyebrow">Pedido solicitado</p>
-        <h2 id="trackingCodeTitle">Codigo de rastreio</h2>
-        <strong className="trackingCodeValue">{code}</strong>
-        <p className="trackingCodeHint">Use este codigo para acompanhar a entrega na area do cliente.</p>
+        <h2 id="trackingCodeTitle">Código do pedido</h2>
+        <div className="trackingCodeLine">
+          <span>Rastreio / confirmação</span>
+          <strong className="trackingCodeValue">{code}</strong>
+        </div>
+        <p className="trackingCodeHint">Use o mesmo código para acompanhar o pedido e confirmar a entrega quando o drone chegar.</p>
         <div className="confirmationActions">
           <button className="secondaryButton compact" type="button" onClick={onClose}>
             <XCircle size={16} aria-hidden="true" />
@@ -2557,13 +3590,44 @@ function StatusRows<T extends string>({
   );
 }
 
-function ProductivityReportPanel({ report }: { report: ProductivityReport | null }) {
+function ProductivityReportPanel({
+  report,
+  selectedMonth,
+  loading,
+  onMonthChange,
+  onPreviousMonth,
+  onNextMonth,
+  onCurrentMonth
+}: {
+  report: ProductivityReport | null;
+  selectedMonth: string;
+  loading: boolean;
+  onMonthChange: (month: string) => void;
+  onPreviousMonth: () => void;
+  onNextMonth: () => void;
+  onCurrentMonth: () => void;
+}) {
+  const currentMonth = currentReportMonth();
+  const nextMonthDisabled = selectedMonth >= currentMonth;
+
   if (!report) {
     return (
-      <section className="productivityGrid" aria-label="Relatorio mensal de produtividade">
+      <section className="productivityGrid" aria-label="Relatório mensal de produtividade">
         <div className="productivityPanel">
-          <ToolHeader icon={<BarChart3 size={18} />} title="Produtividade mensal" />
-          <p className="emptyState">Relatorio mensal indisponivel.</p>
+          <div className="operationHeader compact reportHeader">
+            <ToolHeader icon={<BarChart3 size={18} />} title="Produtividade mensal" />
+            <ReportMonthControls
+              selectedMonth={selectedMonth}
+              currentMonth={currentMonth}
+              loading={loading}
+              nextMonthDisabled={nextMonthDisabled}
+              onMonthChange={onMonthChange}
+              onPreviousMonth={onPreviousMonth}
+              onNextMonth={onNextMonth}
+              onCurrentMonth={onCurrentMonth}
+            />
+          </div>
+          <p className="emptyState">Relatório mensal indisponível.</p>
         </div>
       </section>
     );
@@ -2579,12 +3643,22 @@ function ProductivityReportPanel({ report }: { report: ProductivityReport | null
   const topDrones = report.drones.slice(0, 5);
 
   return (
-    <section className="productivityGrid" aria-label="Relatorio mensal de produtividade">
+    <section className="productivityGrid" aria-label="Relatório mensal de produtividade">
       <div className="productivityPanel">
-        <div className="operationHeader compact">
+        <div className="operationHeader compact reportHeader">
           <ToolHeader icon={<BarChart3 size={18} />} title="Produtividade mensal" />
-          <span className="recordCount">{formatReportMonth(report.month)}</span>
+          <ReportMonthControls
+            selectedMonth={selectedMonth}
+            currentMonth={currentMonth}
+            loading={loading}
+            nextMonthDisabled={nextMonthDisabled}
+            onMonthChange={onMonthChange}
+            onPreviousMonth={onPreviousMonth}
+            onNextMonth={onNextMonth}
+            onCurrentMonth={onCurrentMonth}
+          />
         </div>
+        <span className="reportMonthLabel">{formatReportMonth(report.month)}</span>
         <div className="funnelList">
           {funnel.map((item) => (
             <div className={`funnelRow ${item.className}`} key={item.label}>
@@ -2620,7 +3694,7 @@ function ProductivityReportPanel({ report }: { report: ProductivityReport | null
                 </div>
                 <div className="droneProductivityStats">
                   <span>{drone.ordersDelivered} entregas</span>
-                  <span>{drone.tripsCompleted} concluidas</span>
+                  <span>{drone.tripsCompleted} concluídas</span>
                   <span>{drone.tripsCancelled} canceladas</span>
                   <span>{drone.tripsReturnedEarly} retornos</span>
                 </div>
@@ -2628,10 +3702,74 @@ function ProductivityReportPanel({ report }: { report: ProductivityReport | null
             ))}
           </div>
         ) : (
-          <p className="emptyState">Nenhum drone cadastrado para a competencia.</p>
+          <p className="emptyState">Nenhum drone cadastrado para a competência.</p>
         )}
       </div>
     </section>
+  );
+}
+
+function ReportMonthControls({
+  selectedMonth,
+  currentMonth,
+  loading,
+  nextMonthDisabled,
+  onMonthChange,
+  onPreviousMonth,
+  onNextMonth,
+  onCurrentMonth
+}: {
+  selectedMonth: string;
+  currentMonth: string;
+  loading: boolean;
+  nextMonthDisabled: boolean;
+  onMonthChange: (month: string) => void;
+  onPreviousMonth: () => void;
+  onNextMonth: () => void;
+  onCurrentMonth: () => void;
+}) {
+  return (
+    <div className="reportMonthControls" aria-label="Selecionar mês do relatório">
+      <button
+        className="rowActionButton"
+        type="button"
+        onClick={onPreviousMonth}
+        disabled={loading}
+        aria-label="Mês anterior"
+        title="Mês anterior"
+      >
+        {loading ? <RefreshCcw className="spinIcon" size={15} aria-hidden="true" /> : <ChevronLeft size={16} aria-hidden="true" />}
+      </button>
+      <label className="monthPicker">
+        <CalendarDays size={15} aria-hidden="true" />
+        <span className="srOnly">Mês do relatório</span>
+        <input
+          type="month"
+          value={selectedMonth}
+          max={currentMonth}
+          onChange={(event) => onMonthChange(event.target.value)}
+          disabled={loading}
+        />
+      </label>
+      <button
+        className="rowActionButton"
+        type="button"
+        onClick={onNextMonth}
+        disabled={loading || nextMonthDisabled}
+        aria-label="Próximo mês"
+        title="Próximo mês"
+      >
+        <ChevronRight size={16} aria-hidden="true" />
+      </button>
+      <button
+        className="secondaryButton compact"
+        type="button"
+        onClick={onCurrentMonth}
+        disabled={loading || selectedMonth === currentMonth}
+      >
+        <span>Mês atual</span>
+      </button>
+    </div>
   );
 }
 
@@ -2639,10 +3777,13 @@ function OperationalTable({
   activeTable,
   rows,
   onDroneAction,
+  onCancelOrder,
+  onRequeueOrder,
   onTripAction,
   onSelectTrip,
   selectedTripId,
   droneActionInFlight,
+  orderActionInFlight,
   tripActionInFlight,
   actionBusy,
   telemetryDrafts,
@@ -2651,10 +3792,13 @@ function OperationalTable({
   activeTable: TableView;
   rows: Drone[] | Order[] | Trip[];
   onDroneAction: (id: number, action: DroneAction) => void;
+  onCancelOrder: (order: Order) => void;
+  onRequeueOrder: (id: number) => void;
   onTripAction: (id: number, action: TripAction, options?: TripActionOptions) => void;
   onSelectTrip: (id: number) => void;
   selectedTripId: number | null;
   droneActionInFlight: { id: number; action: DroneAction } | null;
+  orderActionInFlight: { id: number; action: OrderAction } | null;
   tripActionInFlight: { id: number; action: TripAction } | null;
   actionBusy: boolean;
   telemetryDrafts: Record<number, string>;
@@ -2676,7 +3820,15 @@ function OperationalTable({
   }
 
   if (activeTable === "orders") {
-    return <OrderTable rows={rows as Order[]} />;
+    return (
+      <OrderTable
+        rows={rows as Order[]}
+        onCancelOrder={onCancelOrder}
+        onRequeueOrder={onRequeueOrder}
+        actionInFlight={orderActionInFlight}
+        actionBusy={actionBusy}
+      />
+    );
   }
 
   return (
@@ -2717,7 +3869,7 @@ function DroneTable({
             <th>Alcance</th>
             <th>Velocidade</th>
             <th>Recarga</th>
-            <th>Acoes</th>
+            <th>Ações</th>
           </tr>
         </thead>
         <tbody>
@@ -2765,16 +3917,16 @@ function DroneActions({
   return (
     <div className="rowActions">
       <ActionIconButton
-        label="Marcar indisponivel"
-        description="Retira este drone dos proximos planejamentos enquanto ele estiver fora de operacao."
+        label="Marcar indisponível"
+        description="Retira este drone dos próximos planejamentos enquanto ele estiver fora de operação."
         icon={<PowerOff size={16} />}
         disabled={actionBusy || drone.status !== "AVAILABLE"}
         busy={isBusy(actionInFlight, drone.id, "markUnavailable")}
         onClick={() => onDroneAction(drone.id, "markUnavailable")}
       />
       <ActionIconButton
-        label="Marcar disponivel"
-        description="Devolve este drone para a lista de drones disponiveis para planejamento."
+        label="Marcar disponível"
+        description="Devolve este drone para a lista de drones disponíveis para planejamento."
         icon={<CheckCircle2 size={16} />}
         disabled={actionBusy || drone.status !== "UNAVAILABLE"}
         busy={isBusy(actionInFlight, drone.id, "markAvailable")}
@@ -2782,7 +3934,7 @@ function DroneActions({
       />
       <ActionIconButton
         label="Enviar para recarga"
-        description="Move este drone disponivel para a fila de recarga."
+        description="Move este drone disponível para a fila de recarga."
         icon={<BatteryCharging size={16} />}
         disabled={actionBusy || drone.status !== "AVAILABLE" || drone.batteryLevel >= 100}
         busy={isBusy(actionInFlight, drone.id, "enqueueRecharge")}
@@ -2790,11 +3942,19 @@ function DroneActions({
       />
       <ActionIconButton
         label="Concluir recarga"
-        description="Finaliza a recarga, restaura a bateria para 100% e deixa o drone disponivel."
+        description="Finaliza a recarga, restaura a bateria para 100% e deixa o drone disponível."
         icon={<BatteryFull size={16} />}
         disabled={actionBusy || drone.status !== "CHARGING"}
         busy={isBusy(actionInFlight, drone.id, "completeRecharge")}
         onClick={() => onDroneAction(drone.id, "completeRecharge")}
+      />
+      <ActionIconButton
+        label="Excluir drone"
+        description="Remove drones sem viagens vinculadas; drones em rota não podem ser excluídos."
+        icon={<Trash2 size={16} />}
+        disabled={actionBusy || drone.status === "IN_ROUTE"}
+        busy={isBusy(actionInFlight, drone.id, "delete")}
+        onClick={() => onDroneAction(drone.id, "delete")}
       />
     </div>
   );
@@ -2826,10 +3986,22 @@ function ActionIconButton({
   );
 }
 
-function OrderTable({ rows }: { rows: Order[] }) {
+function OrderTable({
+  rows,
+  onCancelOrder,
+  onRequeueOrder,
+  actionInFlight,
+  actionBusy
+}: {
+  rows: Order[];
+  onCancelOrder: (order: Order) => void;
+  onRequeueOrder: (id: number) => void;
+  actionInFlight: { id: number; action: OrderAction } | null;
+  actionBusy: boolean;
+}) {
   return (
     <div className="tableScroller">
-      <table>
+      <table className="orderTable">
         <thead>
           <tr>
             <th>ID</th>
@@ -2837,8 +4009,11 @@ function OrderTable({ rows }: { rows: Order[] }) {
             <th>Status</th>
             <th>Prioridade</th>
             <th>Peso</th>
-            <th>Localizacao</th>
+            <th>Localização</th>
+            <th>Horário confirmado</th>
             <th>Entrada na fila</th>
+            <th>Mensagem</th>
+            <th>Ações</th>
           </tr>
         </thead>
         <tbody>
@@ -2854,11 +4029,59 @@ function OrderTable({ rows }: { rows: Order[] }) {
               </td>
               <td>{formatNumber(order.weight)}</td>
               <td>{formatLocation(order.location.x, order.location.y)}</td>
+              <td>{formatDateTime(order.confirmedDeliveryTime)}</td>
               <td>{formatDateTime(order.queuedAt)}</td>
+              <td className="reasonCell">{localizedStatusReason(order.statusReason) ?? unallocatedOrderMessage(order)}</td>
+              <td>
+                <OrderActions
+                  order={order}
+                  onCancelOrder={onCancelOrder}
+                  onRequeueOrder={onRequeueOrder}
+                  actionInFlight={actionInFlight}
+                  actionBusy={actionBusy}
+                />
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function OrderActions({
+  order,
+  onCancelOrder,
+  onRequeueOrder,
+  actionInFlight,
+  actionBusy
+}: {
+  order: Order;
+  onCancelOrder: (order: Order) => void;
+  onRequeueOrder: (id: number) => void;
+  actionInFlight: { id: number; action: OrderAction } | null;
+  actionBusy: boolean;
+}) {
+  const canAct = order.status === "UNALLOCATED";
+
+  return (
+    <div className="rowActions">
+      <ActionIconButton
+        label="Cancelar pedido"
+        description="Cancela o pedido não alocado e registra a justificativa para o cliente."
+        icon={<XCircle size={16} />}
+        disabled={actionBusy || !canAct}
+        busy={isBusy(actionInFlight, order.id, "cancel")}
+        onClick={() => onCancelOrder(order)}
+      />
+      <ActionIconButton
+        label="Reenviar para planejamento"
+        description="Retorna o pedido não alocado para a fila de planejamento."
+        icon={<RefreshCcw size={16} />}
+        disabled={actionBusy || !canAct}
+        busy={isBusy(actionInFlight, order.id, "requeue")}
+        onClick={() => onRequeueOrder(order.id)}
+      />
     </div>
   );
 }
@@ -2892,11 +4115,11 @@ function TripTable({
             <th>Status</th>
             <th>Pedidos</th>
             <th>Progresso</th>
-            <th>Distancia</th>
-            <th>Duracao</th>
-            <th>Tempo medio</th>
+            <th>Distância</th>
+            <th>Duração</th>
+            <th>Tempo médio</th>
             <th>Telemetria</th>
-            <th>Acoes</th>
+            <th>Ações</th>
           </tr>
         </thead>
         <tbody>
@@ -3003,6 +4226,7 @@ function TripActions({
 }) {
   const nextRoutePosition = nextUndeliveredRoutePosition(trip);
   const canCancel = trip.status === "PLANNED" || trip.status === "IN_ROUTE";
+  const awaitingClientConfirmation = trip.status === "IN_ROUTE" && nextRoutePosition !== null;
 
   return (
     <div className="rowActions">
@@ -3023,20 +4247,20 @@ function TripActions({
         onClick={() => onTripAction(trip.id, "start")}
       />
       <ActionIconButton
-        label={`Registrar entrega da posicao ${nextRoutePosition ?? "-"}`}
-        description="Marca como entregue o proximo pedido pendente da rota desta viagem."
-        icon={<PackageCheck size={16} />}
-        disabled={actionBusy || trip.status !== "IN_ROUTE" || nextRoutePosition === null}
-        busy={isBusy(actionInFlight, trip.id, "deliverNext")}
-        onClick={() => {
-          if (nextRoutePosition !== null) {
-            onTripAction(trip.id, "deliverNext", { routePosition: nextRoutePosition });
-          }
-        }}
+        label="Aguardando cliente"
+        description={
+          awaitingClientConfirmation
+            ? `A entrega da posição ${nextRoutePosition} depende do código informado pelo cliente.`
+            : "Não há entrega aguardando confirmação do cliente."
+        }
+        icon={<KeyRound size={16} />}
+        disabled
+        busy={false}
+        onClick={() => undefined}
       />
       <ActionIconButton
         label="Concluir viagem"
-        description="Finaliza a viagem em rota; se nao houver bateria segura para completar, registra retorno antecipado."
+        description="Finaliza a viagem em rota depois das confirmações; se não houver bateria segura para completar, registra retorno antecipado."
         icon={<Flag size={16} />}
         disabled={actionBusy || trip.status !== "IN_ROUTE"}
         busy={isBusy(actionInFlight, trip.id, "complete")}
@@ -3044,7 +4268,7 @@ function TripActions({
       />
       <ActionIconButton
         label="Cancelar viagem"
-        description="Cancela uma viagem planejada ou em rota e devolve pedidos nao entregues para replanejamento."
+        description="Cancela uma viagem planejada ou em rota e devolve pedidos não entregues para replanejamento."
         icon={<XCircle size={16} />}
         disabled={actionBusy || !canCancel}
         busy={isBusy(actionInFlight, trip.id, "cancel")}
@@ -3129,16 +4353,16 @@ function buildJourneySteps(
       icon: <Plus size={18} />
     },
     {
-      title: "Obstaculo",
+      title: "Obstáculo",
       detail: `${activeObstacles} ativos`,
       status: activeObstacles > 0 ? "done" : "optional",
       href: "#obstacles",
-      actionLabel: "Abrir obstaculos",
+      actionLabel: "Abrir obstáculos",
       icon: <Ban size={18} />
     },
     {
       title: "Planejamento",
-      detail: `${plannableOrders} elegiveis, ${availableDrones} disponiveis`,
+      detail: `${plannableOrders} elegíveis, ${availableDrones} disponíveis`,
       status: hasTripPlan ? "done" : availableDrones > 0 && plannableOrders > 0 ? "ready" : "pending",
       href: "#planning",
       actionLabel: "Abrir plano",
@@ -3172,10 +4396,10 @@ function buildJourneySteps(
     },
     {
       title: "Encerramento",
-      detail: `${completedTrips} concluidas, ${returnedTrips} retornos`,
+      detail: `${completedTrips} concluídas, ${returnedTrips} retornos`,
       status: completedTrips > 0 || returnedTrips > 0 ? "done" : activeTrips > 0 ? "ready" : "pending",
       href: "#operation",
-      actionLabel: "Abrir acoes",
+      actionLabel: "Abrir ações",
       table: "trips",
       icon: <Flag size={18} />
     }
@@ -3184,7 +4408,7 @@ function buildJourneySteps(
 
 function journeyStatusLabel(status: JourneyStatus) {
   const labels: Record<JourneyStatus, string> = {
-    done: "Concluido",
+    done: "Concluído",
     ready: "Pronto",
     optional: "Opcional",
     pending: "Pendente"
@@ -3209,10 +4433,42 @@ function routeProgressStatusLabel(status: RouteProgressStatus) {
   return routeProgressStatusLabels[status];
 }
 
+function routeProgressDisplayStatus(progress: Trip["routeProgress"][number]): RouteProgressStatus {
+  if (progress.delivered) {
+    return "DELIVERED";
+  }
+
+  if (progress.deliveryFailedAt) {
+    return "NOT_DELIVERED";
+  }
+
+  return "PENDING";
+}
+
+function routeProgressMarkerClass(status: RouteProgressStatus) {
+  if (status === "DELIVERED") {
+    return "delivered";
+  }
+
+  if (status === "NOT_DELIVERED") {
+    return "failed";
+  }
+
+  return "";
+}
+
+function statusChipClass(status: RouteProgressStatus) {
+  return status.toLowerCase();
+}
+
+function orderStatusClass(status: OrderStatus) {
+  return status.toLowerCase();
+}
+
 function adminSectionTitle(section: AdminSection) {
   const labels: Record<AdminSection, string> = {
     overview: "Painel",
-    operations: "Operacao",
+    operations: "Operação",
     planning: "Planejamento",
     feedback: "Feedback"
   };
@@ -3223,8 +4479,9 @@ function adminSectionTitle(section: AdminSection) {
 function clientSectionTitle(section: ClientSection) {
   const labels: Record<ClientSection, string> = {
     order: "Solicitar entrega",
+    myOrders: "Meus pedidos",
     tracking: "Acompanhar entrega",
-    reviews: "Avaliacoes"
+    reviews: "Avaliações"
   };
 
   return labels[section];
@@ -3273,6 +4530,7 @@ function buildAlerts(snapshot: DashboardSnapshot) {
   const alerts: string[] = [];
   const pendingReassignment = snapshot.orders.filter((order) => order.status === "PENDING_REASSIGNMENT").length;
   const unallocated = snapshot.orders.filter((order) => order.status === "UNALLOCATED").length;
+  const notDelivered = snapshot.orders.filter((order) => order.status === "NOT_DELIVERED").length;
   const returnedEarly = snapshot.trips.filter((trip) => trip.status === "RETURNED_EARLY").length;
   const activeObstacles = snapshot.obstacles.filter((obstacle) => obstacle.active).length;
   const lowBatteryAvailable = snapshot.drones.filter(
@@ -3280,11 +4538,15 @@ function buildAlerts(snapshot: DashboardSnapshot) {
   ).length;
 
   if (pendingReassignment) {
-    alerts.push(`${pendingReassignment} pedidos aguardando reatribuicao`);
+    alerts.push(`${pendingReassignment} pedidos aguardando reatribuição`);
   }
 
   if (unallocated) {
-    alerts.push(`${unallocated} pedidos nao alocados`);
+    alerts.push(`${unallocated} pedidos não alocados. Cancele com justificativa ou reenvie para planejamento.`);
+  }
+
+  if (notDelivered) {
+    alerts.push(`${notDelivered} pacotes marcados como não entregues por ausência de disponibilidade do cliente.`);
   }
 
   if (returnedEarly) {
@@ -3292,14 +4554,49 @@ function buildAlerts(snapshot: DashboardSnapshot) {
   }
 
   if (lowBatteryAvailable) {
-    alerts.push(`${lowBatteryAvailable} drones disponiveis com bateria abaixo de 30%`);
+    alerts.push(`${lowBatteryAvailable} drones disponíveis com bateria abaixo de 30%`);
   }
 
   if (activeObstacles) {
-    alerts.push(`${activeObstacles} obstaculos ativos afetando proximos planejamentos`);
+    alerts.push(`${activeObstacles} obstáculos ativos afetando próximos planejamentos`);
   }
 
   return alerts;
+}
+
+function unallocatedOrderMessage(order: Order) {
+  if (order.status === "UNALLOCATED") {
+    return "Pedido não alocado. Cancele com justificativa ou reenvie para planejamento.";
+  }
+
+  if (order.status === "CANCELLED") {
+    return "Pedido cancelado.";
+  }
+
+  if (order.status === "NOT_DELIVERED") {
+    return "Pacote não entregue. O drone retornou para a base com a encomenda.";
+  }
+
+  return "-";
+}
+
+function localizedStatusReason(reason?: string | null) {
+  if (!reason) {
+    return null;
+  }
+
+  const normalizedReason = reason.trim();
+  const translations: Record<string, string> = {
+    "order exceeds max drone weight capacity": "Pedido excede a capacidade máxima de peso dos drones disponíveis.",
+    "order exceeds max drone range": "Pedido excede o alcance máximo dos drones disponíveis.",
+    "order exceeds max drone weight capacity and max drone range":
+      "Pedido excede a capacidade máxima de peso e o alcance máximo dos drones disponíveis.",
+    "order exceeds drone battery for complete trip and safe return":
+      "Pedido exige mais bateria do que a frota disponível possui para concluir a rota e retornar em segurança.",
+    "order cannot be served by any drone": "Pedido não pode ser atendido por nenhum drone no planejamento atual."
+  };
+
+  return translations[normalizedReason] ?? normalizedReason;
 }
 
 function buildTableData(snapshot: DashboardSnapshot, activeTable: TableView, searchTerm: string, statusFilter: string) {
@@ -3319,7 +4616,17 @@ function buildTableData(snapshot: DashboardSnapshot, activeTable: TableView, sea
       .filter((order) => statusFilter === "ALL" || order.status === statusFilter)
       .filter((order) =>
         includesSearch(
-          [order.id, order.identifier, order.status, order.priority, order.weight, order.location.x, order.location.y],
+          [
+            order.id,
+            order.identifier,
+            order.status,
+            order.priority,
+            order.weight,
+            order.location.x,
+            order.location.y,
+            order.confirmedDeliveryTime,
+            order.statusReason ?? ""
+          ],
           normalizedSearch
         )
       )
@@ -3378,6 +4685,23 @@ function sortedTelemetry(telemetryHistory: TripTelemetry[]) {
   return [...telemetryHistory].sort((left, right) => Date.parse(right.reportedAt) - Date.parse(left.reportedAt) || right.id - left.id);
 }
 
+function buildClientOrderList(orders: Order[], trips: Trip[], trackingTerm: string): ClientOrderListItem[] {
+  const selectedIdentifier = normalizeSearch(trackingTerm);
+
+  return [...orders].sort((left, right) => right.id - left.id).map((order) => {
+    const trip = findTripForOrder(trips, order.id);
+    const routeProgress = trip ? routeProgressForOrder(trip, order.id) : null;
+
+    return {
+      identifier: order.identifier,
+      order,
+      trip,
+      routeProgress,
+      selected: normalizeSearch(order.identifier) === selectedIdentifier || String(order.id) === selectedIdentifier
+    };
+  });
+}
+
 function findClientOrder(orders: Order[], trackingTerm: string) {
   const normalizedTerm = normalizeSearch(trackingTerm);
 
@@ -3400,6 +4724,182 @@ function findTripForOrder(trips: Trip[], orderId: number) {
 
 function routeProgressForOrder(trip: Trip, orderId: number) {
   return trip.routeProgress.find((progress) => progress.orderId === orderId) ?? null;
+}
+
+function loadClientAuthToken() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.localStorage.getItem(clientAuthTokenStorageKey);
+}
+
+function saveClientAuthToken(authToken: string | null) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (authToken) {
+    window.localStorage.setItem(clientAuthTokenStorageKey, authToken);
+    return;
+  }
+
+  window.localStorage.removeItem(clientAuthTokenStorageKey);
+}
+
+function isDeliveryConfirmationAvailable(
+  order: Order | null,
+  trip: Trip | null,
+  routeProgress: Trip["routeProgress"][number] | null
+) {
+  if (!order || !trip || !routeProgress || routeProgress.delivered || routeProgress.deliveryFailedAt) {
+    return false;
+  }
+
+  const simulation = trip.simulation;
+  const confirmationDeadlineIsActive =
+    routeProgress.deliveryConfirmationDeadline === null ||
+    Date.now() <= Date.parse(routeProgress.deliveryConfirmationDeadline);
+
+  return (
+    order.status === "IN_ROUTE" &&
+    trip.status === "IN_ROUTE" &&
+    simulation?.status === "IN_ROUTE" &&
+    simulation.nextOrderId === order.id &&
+    simulation.nextRoutePosition === routeProgress.routePosition &&
+    !simulation.moving &&
+    Boolean(routeProgress.availabilityConfirmedAt) &&
+    Boolean(routeProgress.deliveryConfirmationRequestedAt) &&
+    confirmationDeadlineIsActive
+  );
+}
+
+function nextAvailabilityNotification(snapshot: DashboardSnapshot, handledKeys: Set<string>) {
+  for (const trip of snapshot.trips) {
+    if (trip.status !== "IN_ROUTE") {
+      continue;
+    }
+
+    const pendingRouteProgress = sortedRouteProgress(trip).find((progress) => {
+      const key = availabilityNotificationKey(trip.id, progress.routePosition, progress.orderId);
+      const order = snapshot.orders.find((candidate) => candidate.id === progress.orderId);
+      return (
+        progress.availabilityNotifiedAt !== null &&
+        progress.availabilityConfirmedAt === null &&
+        !progress.delivered &&
+        !progress.deliveryFailedAt &&
+        order?.status === "IN_ROUTE" &&
+        !handledKeys.has(key)
+      );
+    });
+
+    if (!pendingRouteProgress) {
+      continue;
+    }
+
+    const order = snapshot.orders.find((candidate) => candidate.id === pendingRouteProgress.orderId);
+    return {
+      key: availabilityNotificationKey(trip.id, pendingRouteProgress.routePosition, pendingRouteProgress.orderId),
+      tripId: trip.id,
+      routePosition: pendingRouteProgress.routePosition,
+      orderId: pendingRouteProgress.orderId,
+      orderIdentifier: order?.identifier ?? `#${pendingRouteProgress.orderId}`,
+      droneId: trip.droneId,
+      deadline: pendingRouteProgress.availabilityResponseDeadline
+    };
+  }
+
+  return null;
+}
+
+function isAvailabilityNotificationPending(snapshot: DashboardSnapshot, notification: ArrivalNotificationState) {
+  const trip = snapshot.trips.find((candidate) => candidate.id === notification.tripId);
+  const routeProgress = trip?.routeProgress.find((progress) => progress.routePosition === notification.routePosition);
+  const order = snapshot.orders.find((candidate) => candidate.id === notification.orderId);
+
+  return (
+    trip?.status === "IN_ROUTE" &&
+    order?.status === "IN_ROUTE" &&
+    routeProgress !== undefined &&
+    !routeProgress.delivered &&
+    !routeProgress.deliveryFailedAt &&
+    routeProgress.availabilityNotifiedAt !== null &&
+    routeProgress.availabilityConfirmedAt === null
+  );
+}
+
+function availabilityNotificationKey(tripId: number, routePosition: number, orderId: number) {
+  return `${tripId}:${routePosition}:${orderId}`;
+}
+
+function approachingDeliveryNotificationFor(
+  results: PromiseSettledResult<TripSimulation>[],
+  snapshot: DashboardSnapshot,
+  notificationKeys: Set<string>
+) {
+  for (const result of results) {
+    if (result.status !== "fulfilled") {
+      continue;
+    }
+
+    const notification = approachingDeliveryNotificationFromSimulation(result.value, snapshot, notificationKeys);
+    if (notification) {
+      return notification;
+    }
+  }
+
+  return null;
+}
+
+function approachingDeliveryNotificationFromSimulation(
+  simulation: TripSimulation,
+  snapshot: DashboardSnapshot,
+  notificationKeys: Set<string>
+) {
+  if (
+    simulation.status !== "IN_ROUTE" ||
+    !simulation.moving ||
+    simulation.nextOrderId === null ||
+    simulation.nextRoutePosition === null
+  ) {
+    return null;
+  }
+
+  const trip = snapshot.trips.find((candidate) => candidate.id === simulation.tripId);
+  const routeProgress = trip?.routeProgress.find((progress) => progress.routePosition === simulation.nextRoutePosition);
+  if (!trip || !routeProgress || routeProgress.delivered || routeProgress.deliveryFailedAt) {
+    return null;
+  }
+
+  const speed = droneSpeedForSimulation(snapshot, trip, simulation);
+  if (speed <= 0) {
+    return null;
+  }
+
+  const minutesUntilDelivery = routeProgress.estimatedDeliveryTime - simulation.travelledDistance / speed;
+  if (minutesUntilDelivery <= 0 || minutesUntilDelivery > approachNotificationWindowMinutes) {
+    return null;
+  }
+
+  const notificationKey = `${simulation.tripId}:${routeProgress.routePosition}:${routeProgress.orderId}`;
+  if (notificationKeys.has(notificationKey)) {
+    return null;
+  }
+
+  notificationKeys.add(notificationKey);
+  const order = snapshot.orders.find((candidate) => candidate.id === routeProgress.orderId);
+  const orderLabel = order ? order.identifier : `#${routeProgress.orderId}`;
+
+  return `Drone #${simulation.droneId} está chegando ao destino do pedido ${orderLabel}. O cliente deve confirmar disponibilidade para receber o pacote.`;
+}
+
+function droneSpeedForSimulation(snapshot: DashboardSnapshot, trip: Trip, simulation: TripSimulation) {
+  const drone = snapshot.drones.find((candidate) => candidate.id === simulation.droneId);
+  if (drone) {
+    return drone.speed;
+  }
+
+  return trip.estimatedDuration > 0 ? trip.totalDistance / trip.estimatedDuration : 0;
 }
 
 function tripTrackingRank(status: TripStatus) {
@@ -3427,9 +4927,18 @@ function clientOrderSteps(status: OrderStatus) {
   if (status === "UNALLOCATED") {
     return [
       { label: "Solicitado", state: "done" },
-      { label: "Nao alocado", state: "blocked" },
+      { label: "Não alocado", state: "blocked" },
       { label: "Em rota", state: "pending" },
       { label: "Entregue", state: "pending" }
+    ];
+  }
+
+  if (status === "NOT_DELIVERED") {
+    return [
+      { label: "Solicitado", state: "done" },
+      { label: "Planejado", state: "done" },
+      { label: "Retornou", state: "blocked" },
+      { label: "Não entregue", state: "blocked" }
     ];
   }
 
@@ -3439,7 +4948,7 @@ function clientOrderSteps(status: OrderStatus) {
 
   return [
     { label: "Solicitado", state: "done" },
-    { label: status === "PENDING_REASSIGNMENT" ? "Reatribuicao" : "Planejado", state: allocated ? "done" : "current" },
+    { label: status === "PENDING_REASSIGNMENT" ? "Reatribuição" : "Planejado", state: allocated ? "done" : "current" },
     { label: "Em rota", state: inRoute ? "done" : "pending" },
     { label: "Entregue", state: delivered ? "done" : "pending" }
   ];
@@ -3577,7 +5086,7 @@ function mapOrderTitle(order: Order, highlight?: MapOrderHighlight) {
     return `${base}. Pedido fora das rotas exibidas.`;
   }
 
-  return `${base}. Viagem #${highlight.tripId}, posicao ${highlight.routePosition + 1} da rota.`;
+  return `${base}. Viagem #${highlight.tripId}, posição ${highlight.routePosition + 1} da rota.`;
 }
 
 function buildRouteSegments(points: MapRoutePoint[], viewport: MapViewport) {
@@ -3628,7 +5137,8 @@ function toOrderPayload(form: OrderFormState): CreateOrderPayload {
       y: requiredNumber(form.y)
     },
     weight: requiredNumber(form.weight),
-    priority: form.priority
+    priority: form.priority,
+    confirmedDeliveryTime: requiredDateTimeIso(form.confirmedDeliveryTime)
   };
 }
 
@@ -3640,7 +5150,22 @@ function toClientOrderPayload(form: ClientOrderFormState, trackingCode: string):
       y: requiredNumber(form.y)
     },
     weight: requiredNumber(form.weight),
-    priority: "MEDIUM"
+    priority: "MEDIUM",
+    confirmedDeliveryTime: requiredDateTimeIso(form.confirmedDeliveryTime)
+  };
+}
+
+function toClientAuthPayload(form: ClientAuthFormState): ClientAuthPayload {
+  return {
+    email: form.email.trim(),
+    password: form.password
+  };
+}
+
+function toClientRegisterPayload(form: ClientAuthFormState): ClientRegisterPayload {
+  return {
+    name: form.name.trim(),
+    ...toClientAuthPayload(form)
   };
 }
 
@@ -3694,6 +5219,19 @@ function requiredNumber(value: string) {
   return Number(value);
 }
 
+function requiredDateTimeIso(value: string) {
+  if (!value.trim()) {
+    throw new Error("Horário confirmado deve ser informado");
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error("Horário confirmado é inválido");
+  }
+
+  return date.toISOString();
+}
+
 function optionalNumber(value: string) {
   return value.trim() ? Number(value) : undefined;
 }
@@ -3704,7 +5242,7 @@ function deliveredCount(trip: Trip) {
 
 function nextUndeliveredRoutePosition(trip: Trip) {
   const nextProgress = [...trip.routeProgress]
-    .filter((progress) => !progress.delivered)
+    .filter((progress) => !progress.delivered && !progress.deliveryFailedAt)
     .sort((left, right) => left.routePosition - right.routePosition)[0];
 
   return nextProgress?.routePosition ?? null;
@@ -3725,10 +5263,11 @@ function isBusy<TAction extends string>(actionInFlight: { id: number; action: TA
 
 function droneSuccessMessageFor(drone: Drone, action: DroneAction) {
   const actionMessages: Record<DroneAction, string> = {
-    markUnavailable: `${drone.identifier} marcado como indisponivel.`,
-    markAvailable: `${drone.identifier} marcado como disponivel.`,
+    markUnavailable: `${drone.identifier} marcado como indisponível.`,
+    markAvailable: `${drone.identifier} marcado como disponível.`,
     enqueueRecharge: `${drone.identifier} enviado para a fila de recarga.`,
-    completeRecharge: `${drone.identifier} concluiu a recarga.`
+    completeRecharge: `${drone.identifier} concluiu a recarga.`,
+    delete: `${drone.identifier} excluído.`
   };
 
   return actionMessages[action];
@@ -3743,12 +5282,12 @@ function tripSuccessMessageFor(trip: Trip, action: TripAction, options?: TripAct
 
   const actionMessages: Record<TripAction, string> = {
     start: `${tripLabel} iniciada.`,
-    deliverNext: `${tripLabel}: entrega da posicao ${options?.routePosition ?? "-"} registrada.`,
+    deliverNext: `${tripLabel}: entrega da posição ${options?.routePosition ?? "-"} registrada.`,
     sendTelemetry:
       trip.status === "RETURNED_EARLY"
         ? `${tripLabel}: telemetria registrada e retorno antecipado acionado.`
         : `${tripLabel}: telemetria registrada.`,
-    complete: `${tripLabel} concluida.`,
+    complete: `${tripLabel} concluída.`,
     cancel: `${tripLabel} cancelada.`
   };
 
@@ -3760,11 +5299,11 @@ function tripPlanSuccessMessageFor(plan: TripPlan) {
   const unallocatedCount = plan.unallocatedOrders.length;
   const averageDeliveryTime = average(plan.trips.map((trip) => trip.averageDeliveryTime).filter(Boolean));
 
-  return `${tripCount} viagens planejadas, ${unallocatedCount} pedidos nao alocados, tempo medio ${formatDuration(averageDeliveryTime)}.`;
+  return `${tripCount} viagens planejadas, ${unallocatedCount} pedidos não alocados, tempo médio ${formatDuration(averageDeliveryTime)}.`;
 }
 
 function demoScenarioSuccessMessageFor(result: DemoScenarioResult) {
-  return `Demo recriada: ${result.drones} drones, ${result.orders} pedidos, ${result.obstacles} obstaculo, ${result.reviews} avaliacao e ${result.trips} viagens planejadas.`;
+  return `Demo recriada: ${result.drones} drones, ${result.orders} pedidos, ${result.obstacles} obstáculo, ${result.reviews} avaliação e ${result.trips} viagens planejadas.`;
 }
 
 function countBy<T extends Record<K, string>, K extends keyof T>(items: T[], key: K) {
@@ -3817,6 +5356,28 @@ function formatNullableDateTime(value: string | null) {
   return value ? formatDateTime(value) : "-";
 }
 
+function currentReportMonth() {
+  const now = new Date();
+  return formatYearMonth(now.getFullYear(), now.getMonth() + 1);
+}
+
+function shiftReportMonth(month: string, offset: number) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  if (!year || !monthNumber) {
+    return currentReportMonth();
+  }
+
+  const shifted = new Date(year, monthNumber - 1 + offset, 1);
+  const shiftedMonth = formatYearMonth(shifted.getFullYear(), shifted.getMonth() + 1);
+  const currentMonth = currentReportMonth();
+
+  return shiftedMonth > currentMonth ? currentMonth : shiftedMonth;
+}
+
+function formatYearMonth(year: number, monthNumber: number) {
+  return `${year}-${String(monthNumber).padStart(2, "0")}`;
+}
+
 function formatReportMonth(month: string) {
   const [year, monthNumber] = month.split("-").map(Number);
   if (!year || !monthNumber) {
@@ -3834,6 +5395,41 @@ function formatTime(value: Date) {
     hour: "2-digit",
     minute: "2-digit"
   });
+}
+
+function playNotificationSound() {
+  try {
+    const webkitWindow = window as Window & { webkitAudioContext?: typeof AudioContext };
+    const AudioContextConstructor = window.AudioContext ?? webkitWindow.webkitAudioContext;
+    if (!AudioContextConstructor) {
+      return;
+    }
+
+    const context = new AudioContextConstructor();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const start = context.currentTime;
+
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(880, start);
+    oscillator.frequency.setValueAtTime(660, start + 0.16);
+    gain.gain.setValueAtTime(0.001, start);
+    gain.gain.exponentialRampToValueAtTime(0.24, start + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.45);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(start);
+    oscillator.stop(start + 0.45);
+    oscillator.addEventListener("ended", () => {
+      void context.close();
+    });
+
+    if (context.state === "suspended") {
+      void context.resume().catch(() => undefined);
+    }
+  } catch {
+    // Audio notification is best-effort; the modal remains the reliable alert.
+  }
 }
 
 export default App;

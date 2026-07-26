@@ -19,4 +19,6 @@ interface TripJpaRepository extends JpaRepository<TripEntity, Long> {
 
     @EntityGraph(attributePaths = {"drone", "tripOrders", "tripOrders.order"})
     Optional<TripEntity> findById(Long id);
+
+    boolean existsByDroneId(Long droneId);
 }

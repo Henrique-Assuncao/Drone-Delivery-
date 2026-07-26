@@ -50,27 +50,65 @@ public class TripSimulationService {
             return stateFor(trip);
         }
 
-        double currentDistance = trip.getSimulationTravelledDistance();
-        double distanceToAdvance = elapsedMinutes * trip.getDrone().getSpeed();
-        double nextDistance = Math.min(trip.getTotalDistance(), currentDistance + distanceToAdvance);
-        double advancedDistance = Math.max(0.0, nextDistance - currentDistance);
         Instant now = Instant.now();
+        double currentDistance = trip.getSimulationTravelledDistance();
+        TripOrderEntity nextOpenOrder = nextOpenOrder(trip);
+        if (nextOpenOrder != null) {
+            if (DeliveryAvailabilityPolicy.hasResponseExpired(nextOpenOrder, now)) {
+                returnToBaseAfterAvailabilityTimeout(trip, nextOpenOrder, now);
+                return stateFor(trip);
+            }
 
+            markAvailabilityNotificationIfApproaching(trip, nextOpenOrder, currentDistance, now);
+
+            if (markDeliveryConfirmationTimedOutIfNeeded(trip, nextOpenOrder, currentDistance, now)) {
+                nextOpenOrder = nextOpenOrder(trip);
+            }
+
+            if (nextOpenOrder != null && hasReachedDeliveryPoint(trip, nextOpenOrder, currentDistance)) {
+                markDeliveryConfirmationRequestIfReady(trip, nextOpenOrder, currentDistance, now);
+                return stateFor(trip);
+            }
+        }
+
+        double distanceToAdvance = elapsedMinutes * trip.getDrone().getSpeed();
+        double nextConfirmationDistance = nextOpenOrder == null
+                ? trip.getTotalDistance()
+                : deliveryDistanceFor(trip, nextOpenOrder);
+        double nextDistance = Math.min(nextConfirmationDistance, Math.min(trip.getTotalDistance(), currentDistance + distanceToAdvance));
+        double advancedDistance = Math.max(0.0, nextDistance - currentDistance);
         if (advancedDistance > 0) {
             trip.getDrone().consumeBatteryForDistance(advancedDistance);
         }
 
         Coordinate currentLocation = locationAt(trip, nextDistance);
         trip.updateSimulationState(currentLocation.x(), currentLocation.y(), nextDistance, now);
-        deliverReachedOrders(trip, nextDistance);
-
-        if (nextDistance >= trip.getTotalDistance()) {
-            completeTrip(trip, now);
-            return stateFor(trip);
-        }
 
         if (mustReturnEarly(trip, nextDistance)) {
             returnEarly(trip, currentLocation, now);
+            return stateFor(trip);
+        }
+
+        if (nextOpenOrder != null) {
+            markAvailabilityNotificationIfApproaching(trip, nextOpenOrder, nextDistance, now);
+
+            if (DeliveryAvailabilityPolicy.hasResponseExpired(nextOpenOrder, now)) {
+                returnToBaseAfterAvailabilityTimeout(trip, nextOpenOrder, now);
+                return stateFor(trip);
+            }
+
+            if (markDeliveryConfirmationTimedOutIfNeeded(trip, nextOpenOrder, nextDistance, now)) {
+                return stateFor(trip);
+            }
+
+            if (hasReachedDeliveryPoint(trip, nextOpenOrder, nextDistance)) {
+                markDeliveryConfirmationRequestIfReady(trip, nextOpenOrder, nextDistance, now);
+                return stateFor(trip);
+            }
+        }
+
+        if (nextDistance >= trip.getTotalDistance()) {
+            completeTrip(trip, now);
         }
 
         return stateFor(trip);
@@ -95,32 +133,11 @@ public class TripSimulationService {
         }
     }
 
-    private void deliverReachedOrders(TripEntity trip, double travelledDistance) {
-        for (TripOrderEntity tripOrder : orderedTripOrders(trip)) {
-            if (tripOrder.isDelivered()) {
-                continue;
-            }
-
-            double deliveryDistance = tripOrder.getEstimatedDeliveryTime() * trip.getDrone().getSpeed();
-            if (travelledDistance + 1.0E-9 < deliveryDistance) {
-                break;
-            }
-
-            tripOrder.markDelivered();
-            tripOrder.getOrder().changeStatus(OrderStatus.DELIVERED);
-        }
-    }
-
     private void completeTrip(TripEntity trip, Instant now) {
         trip.changeStatus(TripStatus.COMPLETED);
         trip.markEnded(now);
         trip.getDrone().changeStatus(DroneStatus.AVAILABLE);
         trip.updateSimulationState(BASE_LOCATION.x(), BASE_LOCATION.y(), trip.getTotalDistance(), now);
-
-        for (TripOrderEntity tripOrder : orderedTripOrders(trip)) {
-            tripOrder.markDelivered();
-            tripOrder.getOrder().changeStatus(OrderStatus.DELIVERED);
-        }
     }
 
     private void returnEarly(TripEntity trip, Coordinate currentLocation, Instant now) {
@@ -140,10 +157,79 @@ public class TripSimulationService {
             OrderEntity order = tripOrder.getOrder();
             if (tripOrder.isDelivered()) {
                 order.changeStatus(OrderStatus.DELIVERED);
+            } else if (tripOrder.isDeliveryFailed()) {
+                order.changeStatus(OrderStatus.NOT_DELIVERED, tripOrder.getDeliveryFailureReason());
             } else {
                 order.changeStatus(OrderStatus.PENDING_REASSIGNMENT);
             }
         }
+    }
+
+    private void returnToBaseAfterAvailabilityTimeout(TripEntity trip, TripOrderEntity routeOrder, Instant now) {
+        TripDeliveryReturnOperations.returnToBaseWithUndeliveredPackage(
+                trip,
+                routeOrder,
+                DeliveryAvailabilityPolicy.UNCONFIRMED_AVAILABILITY_REASON,
+                now
+        );
+    }
+
+    private void markAvailabilityNotificationIfApproaching(
+            TripEntity trip,
+            TripOrderEntity tripOrder,
+            double travelledDistance,
+            Instant now
+    ) {
+        if (tripOrder.getAvailabilityNotifiedAt() != null
+                || tripOrder.isAvailabilityConfirmed()
+                || tripOrder.isResolved()) {
+            return;
+        }
+
+        double speed = trip.getDrone().getSpeed();
+        if (speed <= 0) {
+            return;
+        }
+
+        double minutesUntilDelivery = (deliveryDistanceFor(trip, tripOrder) - travelledDistance) / speed;
+        if (minutesUntilDelivery >= 0 && minutesUntilDelivery <= DeliveryAvailabilityPolicy.NOTIFICATION_WINDOW_MINUTES) {
+            tripOrder.markAvailabilityNotified(now);
+        }
+    }
+
+    private boolean markDeliveryConfirmationTimedOutIfNeeded(
+            TripEntity trip,
+            TripOrderEntity tripOrder,
+            double travelledDistance,
+            Instant now
+    ) {
+        markDeliveryConfirmationRequestIfReady(trip, tripOrder, travelledDistance, now);
+
+        if (!DeliveryAvailabilityPolicy.hasDeliveryConfirmationExpired(tripOrder, now)) {
+            return false;
+        }
+
+        tripOrder.markDeliveryFailed(now, DeliveryAvailabilityPolicy.UNCONFIRMED_DELIVERY_CODE_REASON);
+        tripOrder.getOrder().changeStatus(
+                OrderStatus.NOT_DELIVERED,
+                DeliveryAvailabilityPolicy.UNCONFIRMED_DELIVERY_CODE_REASON
+        );
+        return true;
+    }
+
+    private void markDeliveryConfirmationRequestIfReady(
+            TripEntity trip,
+            TripOrderEntity tripOrder,
+            double travelledDistance,
+            Instant now
+    ) {
+        if (!tripOrder.isAvailabilityConfirmed()
+                || tripOrder.isResolved()
+                || !hasReachedDeliveryPoint(trip, tripOrder, travelledDistance)) {
+            return;
+        }
+
+        tripOrder.markDeliveryConfirmationRequested(now);
     }
 
     private boolean mustReturnEarly(TripEntity trip, double travelledDistance) {
@@ -161,7 +247,7 @@ public class TripSimulationService {
 
     public static TripSimulationState stateFor(TripEntity trip) {
         TripOrderEntity nextTripOrder = orderedTripOrders(trip).stream()
-                .filter(tripOrder -> !tripOrder.isDelivered())
+                .filter(tripOrder -> !tripOrder.isResolved())
                 .findFirst()
                 .orElse(null);
         double progress = trip.getTotalDistance() <= 0
@@ -178,9 +264,29 @@ public class TripSimulationService {
                 progress,
                 nextTripOrder == null ? null : nextTripOrder.getOrder().getId(),
                 nextTripOrder == null ? null : nextTripOrder.getRoutePosition(),
-                trip.getStatus() == TripStatus.IN_ROUTE,
+                trip.getStatus() == TripStatus.IN_ROUTE && !isWaitingForDeliveryConfirmation(trip, nextTripOrder),
                 trip.getSimulationUpdatedAt()
         );
+    }
+
+    private static boolean isWaitingForDeliveryConfirmation(TripEntity trip, TripOrderEntity nextTripOrder) {
+        return nextTripOrder != null
+                && hasReachedDeliveryPoint(trip, nextTripOrder, trip.getSimulationTravelledDistance());
+    }
+
+    private TripOrderEntity nextOpenOrder(TripEntity trip) {
+        return orderedTripOrders(trip).stream()
+                .filter(tripOrder -> !tripOrder.isResolved())
+                .findFirst()
+                .orElse(null);
+    }
+
+    private static boolean hasReachedDeliveryPoint(TripEntity trip, TripOrderEntity tripOrder, double travelledDistance) {
+        return travelledDistance + 1.0E-9 >= deliveryDistanceFor(trip, tripOrder);
+    }
+
+    private static double deliveryDistanceFor(TripEntity trip, TripOrderEntity tripOrder) {
+        return tripOrder.getEstimatedDeliveryTime() * trip.getDrone().getSpeed();
     }
 
     private Coordinate locationAt(TripEntity trip, double travelledDistance) {

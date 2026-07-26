@@ -16,6 +16,8 @@ public interface OrderStorage {
 
     List<OrderEntity> findByStatus(OrderStatus status);
 
+    List<OrderEntity> findByClientUserId(Long clientUserId);
+
     List<OrderEntity> findDeliveryQueue();
 
     OrderEntity save(OrderEntity order);

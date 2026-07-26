@@ -242,9 +242,9 @@ class TripControllerTest {
     @Test
     void shouldCompleteTripInRoute() throws Exception {
         DroneEntity drone = new DroneEntity(1L, "DRONE-1", 10.0, 20.0, DroneStatus.IN_ROUTE);
-        OrderEntity order = new OrderEntity(1L, "ORDER-1", 3.0, 4.0, 4.0, Priority.HIGH, OrderStatus.IN_ROUTE);
+        OrderEntity order = new OrderEntity(1L, "ORDER-1", 3.0, 4.0, 4.0, Priority.HIGH, OrderStatus.DELIVERED);
         TripEntity trip = new TripEntity(null, drone, TripStatus.IN_ROUTE, 4.0, 10.0);
-        trip.addOrder(order, 0);
+        trip.addOrder(order, 0, Instant.parse("2026-07-25T20:00:00Z"));
         storage.save(trip);
 
         mockMvc.perform(post("/api/trips/1/complete"))
@@ -270,6 +270,23 @@ class TripControllerTest {
     }
 
     @Test
+    void shouldRejectCompletingTripWithUnconfirmedDelivery() throws Exception {
+        DroneEntity drone = new DroneEntity(1L, "DRONE-1", 10.0, 20.0, DroneStatus.IN_ROUTE);
+        OrderEntity order = new OrderEntity(1L, "ORDER-1", 3.0, 4.0, 4.0, Priority.HIGH, OrderStatus.IN_ROUTE);
+        TripEntity trip = new TripEntity(null, drone, TripStatus.IN_ROUTE, 4.0, 10.0);
+        trip.addOrder(order, 0);
+        storage.save(trip);
+
+        mockMvc.perform(post("/api/trips/1/complete"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("all route positions must be resolved before completing trip"))
+                .andExpect(content().string(not(containsString("trace"))));
+
+        org.junit.jupiter.api.Assertions.assertEquals(TripStatus.IN_ROUTE, trip.getStatus());
+        org.junit.jupiter.api.Assertions.assertEquals(OrderStatus.IN_ROUTE, order.getStatus());
+    }
+
+    @Test
     void shouldReportDeliveredRoutePosition() throws Exception {
         DroneEntity drone = new DroneEntity(1L, "DRONE-1", 10.0, 20.0, DroneStatus.IN_ROUTE);
         OrderEntity firstOrder = new OrderEntity(1L, "ORDER-1", 3.0, 4.0, 4.0, Priority.HIGH, OrderStatus.IN_ROUTE);
@@ -277,9 +294,12 @@ class TripControllerTest {
         TripEntity trip = new TripEntity(null, drone, TripStatus.IN_ROUTE, 8.0, 20.0);
         trip.addOrder(firstOrder, 0);
         trip.addOrder(secondOrder, 1);
+        confirmAvailability(trip, 0);
         storage.save(trip);
 
-        mockMvc.perform(post("/api/trips/1/route/0/deliver"))
+        mockMvc.perform(post("/api/trips/1/route/0/deliver")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deliveryConfirmationRequest("ORDER-1")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1))
                 .andExpect(jsonPath("$.status").value("IN_ROUTE"))
@@ -302,6 +322,73 @@ class TripControllerTest {
     }
 
     @Test
+    void shouldConfirmRouteAvailability() throws Exception {
+        DroneEntity drone = new DroneEntity(1L, "DRONE-1", 10.0, 20.0, DroneStatus.IN_ROUTE);
+        OrderEntity order = new OrderEntity(1L, "ORDER-1", 3.0, 4.0, 4.0, Priority.HIGH, OrderStatus.IN_ROUTE);
+        TripEntity trip = new TripEntity(null, drone, TripStatus.IN_ROUTE, 4.0, 10.0);
+        trip.addOrder(order, 0);
+        trip.getTripOrders().get(0).markAvailabilityNotified(Instant.now());
+        storage.save(trip);
+
+        mockMvc.perform(post("/api/trips/1/route/0/availability")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "available": true
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("IN_ROUTE"))
+                .andExpect(jsonPath("$.routeProgress[0].availabilityNotifiedAt").exists())
+                .andExpect(jsonPath("$.routeProgress[0].availabilityConfirmedAt").exists())
+                .andExpect(jsonPath("$.routeProgress[0].availabilityResponseDeadline").exists());
+    }
+
+    @Test
+    void shouldReturnToBaseWithNotDeliveredPackageWhenClientDeclinesAvailability() throws Exception {
+        DroneEntity drone = new DroneEntity(1L, "DRONE-1", 10.0, 20.0, DroneStatus.IN_ROUTE);
+        OrderEntity order = new OrderEntity(1L, "ORDER-1", 3.0, 4.0, 4.0, Priority.HIGH, OrderStatus.IN_ROUTE);
+        TripEntity trip = new TripEntity(null, drone, TripStatus.IN_ROUTE, 4.0, 10.0);
+        trip.addOrder(order, 0);
+        trip.getTripOrders().get(0).markAvailabilityNotified(Instant.now());
+        storage.save(trip);
+
+        mockMvc.perform(post("/api/trips/1/route/0/availability")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "available": false
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("RETURNED_EARLY"))
+                .andExpect(jsonPath("$.routeProgress[0].delivered").value(false));
+
+        org.junit.jupiter.api.Assertions.assertEquals(OrderStatus.NOT_DELIVERED, order.getStatus());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                "Cliente informou que não está disponível para receber o pacote.",
+                order.getStatusReason()
+        );
+        org.junit.jupiter.api.Assertions.assertEquals(DroneStatus.AVAILABLE, drone.getStatus());
+    }
+
+    @Test
+    void shouldRejectDeliveryWithoutAvailabilityConfirmation() throws Exception {
+        DroneEntity drone = new DroneEntity(1L, "DRONE-1", 10.0, 20.0, DroneStatus.IN_ROUTE);
+        OrderEntity order = new OrderEntity(1L, "ORDER-1", 3.0, 4.0, 4.0, Priority.HIGH, OrderStatus.IN_ROUTE);
+        TripEntity trip = new TripEntity(null, drone, TripStatus.IN_ROUTE, 4.0, 10.0);
+        trip.addOrder(order, 0);
+        storage.save(trip);
+
+        mockMvc.perform(post("/api/trips/1/route/0/deliver")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deliveryConfirmationRequest("ORDER-1")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("delivery availability must be confirmed before delivery"))
+                .andExpect(content().string(not(containsString("trace"))));
+    }
+
+    @Test
     void shouldRejectDeliveringRoutePositionOutOfOrder() throws Exception {
         DroneEntity drone = new DroneEntity(1L, "DRONE-1", 10.0, 20.0, DroneStatus.IN_ROUTE);
         OrderEntity firstOrder = new OrderEntity(1L, "ORDER-1", 3.0, 4.0, 4.0, Priority.HIGH, OrderStatus.IN_ROUTE);
@@ -309,15 +396,74 @@ class TripControllerTest {
         TripEntity trip = new TripEntity(null, drone, TripStatus.IN_ROUTE, 8.0, 20.0);
         trip.addOrder(firstOrder, 0);
         trip.addOrder(secondOrder, 1);
+        confirmAvailability(trip, 0);
         storage.save(trip);
 
-        mockMvc.perform(post("/api/trips/1/route/1/deliver"))
+        mockMvc.perform(post("/api/trips/1/route/1/deliver")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deliveryConfirmationRequest("ORDER-2")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("previous route positions must be delivered first"))
                 .andExpect(content().string(not(containsString("trace"))));
 
         org.junit.jupiter.api.Assertions.assertEquals(OrderStatus.IN_ROUTE, firstOrder.getStatus());
         org.junit.jupiter.api.Assertions.assertEquals(OrderStatus.IN_ROUTE, secondOrder.getStatus());
+    }
+
+    @Test
+    void shouldRejectDeliveryWithInvalidConfirmationCode() throws Exception {
+        DroneEntity drone = new DroneEntity(1L, "DRONE-1", 10.0, 20.0, DroneStatus.IN_ROUTE);
+        OrderEntity order = new OrderEntity(1L, "ORDER-1", 3.0, 4.0, 4.0, Priority.HIGH, OrderStatus.IN_ROUTE);
+        TripEntity trip = new TripEntity(null, drone, TripStatus.IN_ROUTE, 4.0, 10.0);
+        trip.addOrder(order, 0);
+        confirmAvailability(trip, 0);
+        storage.save(trip);
+
+        mockMvc.perform(post("/api/trips/1/route/0/deliver")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deliveryConfirmationRequest("WRONG1")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("delivery confirmation code is invalid"))
+                .andExpect(content().string(not(containsString("trace"))));
+
+        org.junit.jupiter.api.Assertions.assertEquals(OrderStatus.IN_ROUTE, order.getStatus());
+    }
+
+    @Test
+    void shouldRejectDeliveryWhenConfirmationWindowExpired() throws Exception {
+        DroneEntity drone = new DroneEntity(1L, "DRONE-1", 10.0, 20.0, DroneStatus.IN_ROUTE);
+        OrderEntity order = new OrderEntity(1L, "ORDER-1", 3.0, 4.0, 4.0, Priority.HIGH, OrderStatus.IN_ROUTE);
+        TripEntity trip = new TripEntity(null, drone, TripStatus.IN_ROUTE, 4.0, 10.0);
+        trip.addOrder(order, 0);
+        TripOrderEntity routeOrder = trip.getTripOrders().get(0);
+        routeOrder.markAvailabilityConfirmed(Instant.now().minusSeconds(90));
+        routeOrder.markDeliveryConfirmationRequested(Instant.now().minusSeconds(61));
+        storage.save(trip);
+
+        mockMvc.perform(post("/api/trips/1/route/0/deliver")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deliveryConfirmationRequest("ORDER-1")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("delivery confirmation window expired"))
+                .andExpect(content().string(not(containsString("trace"))));
+
+        org.junit.jupiter.api.Assertions.assertEquals(OrderStatus.IN_ROUTE, order.getStatus());
+    }
+
+    @Test
+    void shouldRejectDeliveryWithoutConfirmationRequestBody() throws Exception {
+        DroneEntity drone = new DroneEntity(1L, "DRONE-1", 10.0, 20.0, DroneStatus.IN_ROUTE);
+        OrderEntity order = new OrderEntity(1L, "ORDER-1", 3.0, 4.0, 4.0, Priority.HIGH, OrderStatus.IN_ROUTE);
+        TripEntity trip = new TripEntity(null, drone, TripStatus.IN_ROUTE, 4.0, 10.0);
+        trip.addOrder(order, 0);
+        storage.save(trip);
+
+        mockMvc.perform(post("/api/trips/1/route/0/deliver"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("request body must not be null"))
+                .andExpect(content().string(not(containsString("trace"))));
+
+        org.junit.jupiter.api.Assertions.assertEquals(OrderStatus.IN_ROUTE, order.getStatus());
     }
 
     @Test
@@ -328,7 +474,9 @@ class TripControllerTest {
         trip.addOrder(order, 0);
         storage.save(trip);
 
-        mockMvc.perform(post("/api/trips/1/route/0/deliver"))
+        mockMvc.perform(post("/api/trips/1/route/0/deliver")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deliveryConfirmationRequest("ORDER-1")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("trip must be IN_ROUTE to report delivery"))
                 .andExpect(content().string(not(containsString("trace"))));
@@ -342,7 +490,9 @@ class TripControllerTest {
         trip.addOrder(order, 0);
         storage.save(trip);
 
-        mockMvc.perform(post("/api/trips/1/route/-1/deliver"))
+        mockMvc.perform(post("/api/trips/1/route/-1/deliver")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deliveryConfirmationRequest("ORDER-1")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("routePosition must not be negative"))
                 .andExpect(content().string(not(containsString("trace"))));
@@ -356,7 +506,9 @@ class TripControllerTest {
         trip.addOrder(order, 0);
         storage.save(trip);
 
-        mockMvc.perform(post("/api/trips/1/route/1/deliver"))
+        mockMvc.perform(post("/api/trips/1/route/1/deliver")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deliveryConfirmationRequest("ORDER-1")))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("trip route position not found"))
                 .andExpect(content().string(not(containsString("trace"))));
@@ -381,9 +533,12 @@ class TripControllerTest {
         TripEntity trip = new TripEntity(null, drone, TripStatus.IN_ROUTE, 8.0, 20.0);
         trip.addOrder(firstOrder, 0);
         trip.addOrder(secondOrder, 1);
+        confirmAvailability(trip, 0);
         storage.save(trip);
 
-        mockMvc.perform(post("/api/trips/1/route/0/deliver"))
+        mockMvc.perform(post("/api/trips/1/route/0/deliver")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deliveryConfirmationRequest("ORDER-1")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.routeProgress[0].delivered").value(true));
 
@@ -432,6 +587,7 @@ class TripControllerTest {
         TripEntity trip = new TripEntity(null, drone, TripStatus.IN_ROUTE, 8.0, 20.0);
         trip.addOrder(firstOrder, 0);
         trip.addOrder(secondOrder, 1);
+        confirmAvailability(trip, 0);
         storage.save(trip);
 
         mockMvc.perform(post("/api/trips/1/complete"))
@@ -515,9 +671,12 @@ class TripControllerTest {
         TripEntity trip = new TripEntity(null, drone, TripStatus.IN_ROUTE, 8.0, 20.0);
         trip.addOrder(firstOrder, 0);
         trip.addOrder(secondOrder, 1);
+        confirmAvailability(trip, 0);
         storage.save(trip);
 
-        mockMvc.perform(post("/api/trips/1/route/0/deliver"))
+        mockMvc.perform(post("/api/trips/1/route/0/deliver")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(deliveryConfirmationRequest("ORDER-1")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.routeProgress[0].delivered").value(true));
 
@@ -736,6 +895,24 @@ class TripControllerTest {
                 .andExpect(content().string(not(containsString("trace"))));
     }
 
+    private String deliveryConfirmationRequest(String confirmationCode) {
+        return """
+                {
+                  "confirmationCode": "%s"
+                }
+                """.formatted(confirmationCode);
+    }
+
+    private void confirmAvailability(TripEntity trip, int routePosition) {
+        TripOrderEntity tripOrder = trip.getTripOrders().stream()
+                .filter(candidate -> candidate.getRoutePosition() == routePosition)
+                .findFirst()
+                .orElseThrow();
+        Instant now = Instant.now();
+        tripOrder.markAvailabilityNotified(now);
+        tripOrder.markAvailabilityConfirmed(now);
+    }
+
     private static class InMemoryTripStorage implements TripStorage {
 
         private final Map<Long, TripEntity> tripsById = new LinkedHashMap<>();
@@ -773,7 +950,12 @@ class TripControllerTest {
                         tripOrder.getOrder(),
                         tripOrder.getRoutePosition(),
                         tripOrder.getDeliveredAt(),
-                        tripOrder.getEstimatedDeliveryTime()
+                        tripOrder.getEstimatedDeliveryTime(),
+                        tripOrder.getAvailabilityNotifiedAt(),
+                        tripOrder.getAvailabilityConfirmedAt(),
+                        tripOrder.getDeliveryConfirmationRequestedAt(),
+                        tripOrder.getDeliveryFailedAt(),
+                        tripOrder.getDeliveryFailureReason()
                 );
             }
 

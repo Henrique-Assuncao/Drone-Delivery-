@@ -6,6 +6,7 @@ export type OrderStatus =
   | "IN_ROUTE"
   | "PENDING_REASSIGNMENT"
   | "DELIVERED"
+  | "NOT_DELIVERED"
   | "CANCELLED"
   | "UNALLOCATED";
 
@@ -13,7 +14,7 @@ export type TripStatus = "PLANNED" | "IN_ROUTE" | "RETURNED_EARLY" | "COMPLETED"
 
 export type Priority = "HIGH" | "MEDIUM" | "LOW";
 
-export type DroneAction = "markUnavailable" | "markAvailable" | "enqueueRecharge" | "completeRecharge";
+export type DroneAction = "markUnavailable" | "markAvailable" | "enqueueRecharge" | "completeRecharge" | "delete";
 
 export type TripAction = "start" | "deliverNext" | "sendTelemetry" | "complete" | "cancel";
 
@@ -36,6 +37,7 @@ export interface CreateOrderPayload {
   };
   weight: number;
   priority: Priority;
+  confirmedDeliveryTime: string;
 }
 
 export interface CreateObstaclePayload {
@@ -50,6 +52,27 @@ export interface CreateReviewPayload {
   stars: number;
   title: string;
   feedback: string;
+}
+
+export interface ClientAuthPayload {
+  email: string;
+  password: string;
+}
+
+export interface ClientRegisterPayload extends ClientAuthPayload {
+  name: string;
+}
+
+export interface ClientUser {
+  id: number;
+  name: string;
+  email: string;
+  createdAt: string;
+}
+
+export interface ClientAuthResponse {
+  user: ClientUser;
+  token: string;
 }
 
 export interface Drone {
@@ -78,6 +101,9 @@ export interface Order {
   priority: Priority;
   status: OrderStatus;
   queuedAt: string;
+  confirmedDeliveryTime: string;
+  deliveryConfirmationCode?: string;
+  statusReason?: string;
 }
 
 export interface TripRouteProgress {
@@ -86,6 +112,13 @@ export interface TripRouteProgress {
   delivered: boolean;
   deliveredAt: string | null;
   estimatedDeliveryTime: number;
+  availabilityNotifiedAt: string | null;
+  availabilityConfirmedAt: string | null;
+  availabilityResponseDeadline: string | null;
+  deliveryConfirmationRequestedAt: string | null;
+  deliveryConfirmationDeadline: string | null;
+  deliveryFailedAt: string | null;
+  deliveryFailureReason: string | null;
 }
 
 export interface TripSimulation {
@@ -148,6 +181,7 @@ export interface DeliveryQueueEntry {
   priority: Priority;
   status: OrderStatus;
   queuedAt: string;
+  confirmedDeliveryTime: string;
 }
 
 export interface Obstacle {

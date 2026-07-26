@@ -38,7 +38,8 @@ public class DeliveryQueueController {
                 order.getWeight(),
                 order.getPriority(),
                 order.getStatus(),
-                order.getQueuedAt()
+                order.getQueuedAt(),
+                order.getConfirmedDeliveryTime()
         );
     }
 
@@ -50,7 +51,9 @@ public class DeliveryQueueController {
             Priority priority,
             OrderStatus status,
             @JsonFormat(shape = JsonFormat.Shape.STRING)
-            Instant queuedAt
+            Instant queuedAt,
+            @JsonFormat(shape = JsonFormat.Shape.STRING)
+            Instant confirmedDeliveryTime
     ) {
     }
 

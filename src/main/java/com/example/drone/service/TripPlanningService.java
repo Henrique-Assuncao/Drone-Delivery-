@@ -196,10 +196,27 @@ public class TripPlanningService {
 
         for (UnallocatedOrder unallocatedOrder : unallocatedOrders) {
             OrderEntity orderEntity = orderEntitiesByDomain.get(unallocatedOrder.order());
-            orderEntity.changeStatus(OrderStatus.UNALLOCATED);
-            persistedUnallocatedOrders.add(new PersistedUnallocatedOrder(orderEntity, unallocatedOrder.reason()));
+            String localizedReason = localizedUnallocatedReason(unallocatedOrder.reason());
+            orderEntity.changeStatus(OrderStatus.UNALLOCATED, localizedReason);
+            persistedUnallocatedOrders.add(new PersistedUnallocatedOrder(orderEntity, localizedReason));
         }
 
         return persistedUnallocatedOrders;
+    }
+
+    private String localizedUnallocatedReason(String reason) {
+        return switch (reason) {
+            case "order exceeds max drone weight capacity" ->
+                    "Pedido excede a capacidade máxima de peso dos drones disponíveis.";
+            case "order exceeds max drone range" ->
+                    "Pedido excede o alcance máximo dos drones disponíveis.";
+            case "order exceeds max drone weight capacity and max drone range" ->
+                    "Pedido excede a capacidade máxima de peso e o alcance máximo dos drones disponíveis.";
+            case "order exceeds drone battery for complete trip and safe return" ->
+                    "Pedido exige mais bateria do que a frota disponível possui para concluir a rota e retornar em segurança.";
+            case "order cannot be served by any drone" ->
+                    "Pedido não pode ser atendido por nenhum drone no planejamento atual.";
+            default -> reason;
+        };
     }
 }

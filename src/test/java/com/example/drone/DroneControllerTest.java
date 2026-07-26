@@ -20,6 +20,7 @@ import java.util.Optional;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -34,13 +35,18 @@ class DroneControllerTest {
     @BeforeEach
     void setUp() {
         storage = new InMemoryDroneStorage();
+        mockMvc = buildMockMvc(new EmptyTripStorage());
+    }
+
+    private MockMvc buildMockMvc(TripStorage tripStorage) {
         DroneRegistrationService registrationService = new DroneRegistrationService(storage);
         DroneQueryService queryService = new DroneQueryService(storage);
         DroneAvailabilityService availabilityService = new DroneAvailabilityService(storage);
         DroneRechargeService rechargeService = new DroneRechargeService(storage);
+        DroneRemovalService removalService = new DroneRemovalService(storage, tripStorage);
 
-        mockMvc = MockMvcBuilders.standaloneSetup(
-                        new DroneController(registrationService, queryService, availabilityService, rechargeService)
+        return MockMvcBuilders.standaloneSetup(
+                        new DroneController(registrationService, queryService, availabilityService, rechargeService, removalService)
                 )
                 .setControllerAdvice(new ApiExceptionHandler())
                 .build();
@@ -401,6 +407,42 @@ class DroneControllerTest {
                 .andExpect(content().string(not(containsString("trace"))));
     }
 
+    @Test
+    void shouldDeleteDrone() throws Exception {
+        createDrone("DRONE-1", 10.0, 20.0);
+
+        mockMvc.perform(delete("/api/drones/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.identifier").value("DRONE-1"))
+                .andExpect(content().string(not(containsString("trace"))));
+
+        mockMvc.perform(get("/api/drones"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void shouldRejectDeletingDroneInRoute() throws Exception {
+        storage.save(new DroneEntity(null, "DRONE-1", 10.0, 20.0, DroneStatus.IN_ROUTE));
+
+        mockMvc.perform(delete("/api/drones/1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("drone must not be IN_ROUTE to delete"))
+                .andExpect(content().string(not(containsString("trace"))));
+    }
+
+    @Test
+    void shouldRejectDeletingDroneWithTrips() throws Exception {
+        storage.save(new DroneEntity(null, "DRONE-1", 10.0, 20.0, DroneStatus.AVAILABLE));
+        MockMvc mockMvcWithTripHistory = buildMockMvc(new TripLinkedStorage());
+
+        mockMvcWithTripHistory.perform(delete("/api/drones/1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("drone with trips cannot be deleted"))
+                .andExpect(content().string(not(containsString("trace"))));
+    }
+
     private void createDrone(String identifier, double maxWeightCapacity, double maxRange) throws Exception {
         mockMvc.perform(post("/api/drones")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -472,6 +514,42 @@ class DroneControllerTest {
             dronesByIdentifier.put(savedDrone.getIdentifier(), savedDrone);
 
             return savedDrone;
+        }
+
+        @Override
+        public void delete(DroneEntity drone) {
+            dronesByIdentifier.remove(drone.getIdentifier());
+        }
+    }
+
+    private static class EmptyTripStorage implements TripStorage {
+
+        @Override
+        public List<TripEntity> findAll() {
+            return List.of();
+        }
+
+        @Override
+        public List<TripEntity> findByStatus(TripStatus status) {
+            return List.of();
+        }
+
+        @Override
+        public Optional<TripEntity> findById(Long id) {
+            return Optional.empty();
+        }
+
+        @Override
+        public TripEntity save(TripEntity trip) {
+            return trip;
+        }
+    }
+
+    private static class TripLinkedStorage extends EmptyTripStorage {
+
+        @Override
+        public boolean existsByDroneId(Long droneId) {
+            return true;
         }
     }
 }

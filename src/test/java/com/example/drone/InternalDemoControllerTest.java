@@ -18,6 +18,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class InternalDemoControllerTest {
 
+    private static final String INTERNAL_API_KEY = "test-internal-key";
+
     private MockMvc mockMvc;
     private FakeDemoDataService service;
 
@@ -26,12 +28,14 @@ class InternalDemoControllerTest {
         service = new FakeDemoDataService();
         mockMvc = MockMvcBuilders.standaloneSetup(new InternalDemoController(service))
                 .setControllerAdvice(new ApiExceptionHandler())
+                .addFilters(new InternalApiAuthenticationFilter(INTERNAL_API_KEY))
                 .build();
     }
 
     @Test
     void shouldResetAndSeedDemoScenarioWhenConfirmationIsValid() throws Exception {
         mockMvc.perform(post("/internal/demo/reset-and-seed")
+                        .header(InternalApiAuthenticationFilter.HEADER_NAME, INTERNAL_API_KEY)
                         .param("confirmation", InternalDemoController.RESET_CONFIRMATION))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.drones").value(1))
@@ -44,9 +48,18 @@ class InternalDemoControllerTest {
 
     @Test
     void shouldRejectDemoResetWhenConfirmationIsMissing() throws Exception {
-        mockMvc.perform(post("/internal/demo/reset-and-seed"))
+        mockMvc.perform(post("/internal/demo/reset-and-seed")
+                        .header(InternalApiAuthenticationFilter.HEADER_NAME, INTERNAL_API_KEY))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("confirmation must be RESET_DEMO_DATA"));
+    }
+
+    @Test
+    void shouldRejectDemoResetWithoutApiKey() throws Exception {
+        mockMvc.perform(post("/internal/demo/reset-and-seed")
+                        .param("confirmation", InternalDemoController.RESET_CONFIRMATION))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("internal api key is required"));
     }
 
     private static class FakeDemoDataService extends DemoDataService {

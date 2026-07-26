@@ -36,4 +36,9 @@ public class JpaTripStorage implements TripStorage {
     public TripEntity save(TripEntity trip) {
         return repository.save(trip);
     }
+
+    @Override
+    public boolean existsByDroneId(Long droneId) {
+        return repository.existsByDroneId(droneId);
+    }
 }

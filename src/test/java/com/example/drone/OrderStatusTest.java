@@ -22,6 +22,7 @@ class OrderStatusTest {
                         OrderStatus.IN_ROUTE,
                         OrderStatus.PENDING_REASSIGNMENT,
                         OrderStatus.DELIVERED,
+                        OrderStatus.NOT_DELIVERED,
                         OrderStatus.CANCELLED,
                         OrderStatus.UNALLOCATED
                 },
@@ -36,6 +37,7 @@ class OrderStatusTest {
         assertEquals("IN_ROUTE", OrderStatus.IN_ROUTE.name());
         assertEquals("PENDING_REASSIGNMENT", OrderStatus.PENDING_REASSIGNMENT.name());
         assertEquals("DELIVERED", OrderStatus.DELIVERED.name());
+        assertEquals("NOT_DELIVERED", OrderStatus.NOT_DELIVERED.name());
         assertEquals("CANCELLED", OrderStatus.CANCELLED.name());
         assertEquals("UNALLOCATED", OrderStatus.UNALLOCATED.name());
     }

@@ -72,12 +72,25 @@ O roteiro atual aprovou a evolução de bateria, recarga, cálculo de tempo, obs
 - O PostgreSQL local deve usar banco `drone_delivery`, usuário `drone`, senha `drone` e porta `5432`.
 - A evolução do esquema do banco deve ser controlada com Flyway.
 - Pedidos devem possuir status operacional.
+- Pedidos cadastrados pela API devem usar o identificador de rastreio como código de confirmação de entrega.
+- A resposta de cadastro do pedido deve retornar o código de confirmação, com o mesmo valor do rastreio, para o cliente.
+- Consultas de pedidos não devem expor o código de confirmação.
+- Pedidos cadastrados pela API devem possuir horário confirmado de entrega.
+- A experiência Cliente deve permitir cadastro, login e logout do usuário.
+- Pedidos criados pela experiência Cliente devem ser vinculados à conta autenticada.
+- A aba `Meus pedidos` deve listar apenas pedidos da conta autenticada e permitir alternar entre eles.
+- A experiência Cliente não deve permitir solicitação de entrega sem autenticação.
+- Pedidos não alocados devem manter uma mensagem de status para admin e cliente.
+- Motivos de não alocação exibidos pela API operacional e pela experiência Cliente devem estar em português.
+- O admin deve poder cancelar pedidos não alocados informando justificativa ou reenviar o pacote para planejamento.
+- O cliente deve receber mensagem quando o pacote não puder ser alocado, quando não for entregue ou quando a entrega for cancelada.
 - Os status iniciais de pedido serão:
   - `REQUESTED`;
   - `ALLOCATED`;
   - `IN_ROUTE`;
   - `PENDING_REASSIGNMENT`;
   - `DELIVERED`;
+  - `NOT_DELIVERED`;
   - `CANCELLED`;
   - `UNALLOCATED`.
 - Drones devem possuir status operacional.
@@ -87,6 +100,7 @@ O roteiro atual aprovou a evolução de bateria, recarga, cálculo de tempo, obs
   - `UNAVAILABLE`;
   - `CHARGING`.
 - Um drone deve deixar de estar disponível somente quando uma viagem for iniciada, não apenas quando o plano for criado.
+- O admin deve poder excluir drones que não estejam em rota e que não possuam viagens vinculadas.
 - Viagens devem possuir status operacional.
 - Os status iniciais de viagem serão:
   - `PLANNED`;
@@ -102,13 +116,21 @@ O roteiro atual aprovou a evolução de bateria, recarga, cálculo de tempo, obs
   - os pedidos associados devem passar para `IN_ROUTE`.
 - Ao concluir uma viagem com bateria suficiente para a rota completa:
   - a viagem deve passar de `IN_ROUTE` para `COMPLETED`;
+  - todas as posições da rota devem estar resolvidas, por confirmação do cliente ou falha de entrega por prazo expirado;
   - o drone associado deve voltar para `AVAILABLE`;
-  - os pedidos associados devem passar para `DELIVERED`.
+  - os pedidos confirmados devem permanecer `DELIVERED`.
 - Durante uma viagem:
   - a API deve permitir registrar telemetria de bateria;
   - a telemetria deve atualizar a bateria atual do drone associado;
   - a telemetria deve ser persistida em histórico consultável por viagem;
-  - a API deve permitir registrar entrega por posição da rota;
+  - a API deve permitir confirmar entrega por posição da rota com código informado pelo cliente;
+  - a confirmação de entrega deve exigir disponibilidade confirmada pelo cliente após notificação de aproximação;
+  - a confirmação de entrega deve exigir que o drone tenha alcançado a posição da rota;
+  - a confirmação de entrega deve rejeitar código ausente ou inválido;
+  - se o cliente não responder à notificação de disponibilidade dentro do prazo, o drone deve retornar à base com a encomenda;
+  - nesse retorno por falta de disponibilidade, o pacote atual deve passar para `NOT_DELIVERED` com motivo em português;
+  - depois que o drone alcançar o endereço e a disponibilidade estiver confirmada, o cliente deve ter 1 minuto para informar o código de recebimento;
+  - se o cliente não informar o código nesse prazo, o pacote atual deve passar para `NOT_DELIVERED` com motivo em português e o drone deve seguir a rota levando a encomenda de volta para a base;
   - se a bateria informada não comportar a rota completa com reserva mínima, o retorno antecipado deve ser acionado imediatamente.
 - Ao concluir uma viagem sem bateria suficiente para a rota completa:
   - o drone deve retornar à base preservando a reserva mínima possível;
@@ -261,6 +283,7 @@ Item da rota:
 Pedido:
 
 - `queuedAt`: data e hora de entrada na fila operacional.
+- `confirmedDeliveryTime`: data e hora confirmada para a entrega.
 
 ### Campos de obstáculo implementados
 
@@ -467,7 +490,8 @@ Entrada:
   "identifier": "ORDER-1",
   "location": { "x": 3.0, "y": 4.0 },
   "weight": 4.0,
-  "priority": "HIGH"
+  "priority": "HIGH",
+  "confirmedDeliveryTime": "2026-07-26T18:30:00Z"
 }
 ```
 
@@ -481,7 +505,8 @@ Saída:
   "weight": 4.0,
   "priority": "HIGH",
   "status": "REQUESTED",
-  "queuedAt": "2026-07-25T20:00:00Z"
+  "queuedAt": "2026-07-25T20:00:00Z",
+  "confirmedDeliveryTime": "2026-07-26T18:30:00Z"
 }
 ```
 
@@ -498,7 +523,8 @@ Saída:
   "location": { "x": 3.0, "y": 4.0 },
   "weight": 4.0,
   "priority": "HIGH",
-  "status": "REQUESTED"
+  "status": "REQUESTED",
+  "confirmedDeliveryTime": "2026-07-26T18:30:00Z"
 }
 ```
 
@@ -521,7 +547,8 @@ Saída:
     "weight": 4.0,
     "priority": "HIGH",
     "status": "REQUESTED",
-    "queuedAt": "2026-07-25T20:00:00Z"
+    "queuedAt": "2026-07-25T20:00:00Z",
+    "confirmedDeliveryTime": "2026-07-26T18:30:00Z"
   }
 ]
 ```
@@ -737,7 +764,6 @@ Erros esperados:
 ## Decisões ainda pendentes
 
 - Definir se haverá CLI além da API REST.
-- Definir autenticação e autorização reais para endpoints internos, como consulta de bateria.
 
 ## Critérios de aceite
 
@@ -787,8 +813,9 @@ Erros esperados:
 - Drone `IN_ROUTE` não pode ser alterado manualmente para `AVAILABLE` ou `UNAVAILABLE`.
 - Drone `CHARGING` não pode ser alterado manualmente para `AVAILABLE` pelo endpoint de disponibilidade.
 - A evolução operacional permite identificar drones com status `AVAILABLE`, `IN_ROUTE`, `UNAVAILABLE` e `CHARGING`.
-- A evolução operacional permite identificar pedidos com status `REQUESTED`, `ALLOCATED`, `IN_ROUTE`, `PENDING_REASSIGNMENT`, `DELIVERED`, `CANCELLED` e `UNALLOCATED`.
+- A evolução operacional permite identificar pedidos com status `REQUESTED`, `ALLOCATED`, `IN_ROUTE`, `PENDING_REASSIGNMENT`, `DELIVERED`, `NOT_DELIVERED`, `CANCELLED` e `UNALLOCATED`.
 - O endpoint `POST /api/orders` persiste pedidos válidos com status inicial `REQUESTED`.
+- O endpoint `POST /api/orders` exige e persiste `confirmedDeliveryTime`.
 - O endpoint `POST /api/orders` retorna HTTP `409 Conflict` para identificador duplicado.
 - O endpoint `POST /api/orders` atribui `queuedAt` aos pedidos criados.
 - O endpoint `GET /api/orders` retorna todos os pedidos cadastrados em ordem crescente de `id`.
@@ -852,15 +879,22 @@ Erros esperados:
 - O endpoint `GET /api/trips/{id}/telemetry` lista o histórico de telemetria da viagem por `reportedAt` e `id`.
 - O endpoint `GET /api/trips/{id}/telemetry` rejeita viagem inexistente com HTTP `404`.
 - As respostas de viagem incluem `routeProgress` com `orderId`, `routePosition`, `delivered` e `deliveredAt`.
-- O endpoint `POST /api/trips/{id}/route/{routePosition}/deliver` registra entrega de uma posição da rota.
-- O endpoint `POST /api/trips/{id}/route/{routePosition}/deliver` altera o pedido associado para `DELIVERED`.
+- O endpoint `POST /api/orders` retorna `deliveryConfirmationCode` igual ao identificador do pedido no cadastro válido.
+- O endpoint `GET /api/orders` e a consulta por `id` não retornam `deliveryConfirmationCode`.
+- As respostas de pedido retornam `statusReason` quando houver mensagem de não alocação ou cancelamento.
+- O endpoint `POST /api/orders/{id}/cancel` cancela pedido `UNALLOCATED` com justificativa obrigatória.
+- O endpoint `POST /api/orders/{id}/requeue` retorna pedido `UNALLOCATED` para `REQUESTED`.
+- O endpoint `DELETE /api/drones/{id}` exclui drones sem viagens vinculadas e rejeita drones `IN_ROUTE`.
+- O endpoint `POST /api/trips/{id}/route/{routePosition}/deliver` confirma entrega de uma posição da rota com `confirmationCode`.
+- O endpoint `POST /api/trips/{id}/route/{routePosition}/deliver` altera o pedido associado para `DELIVERED` somente quando o código informado é válido.
 - O endpoint `POST /api/trips/{id}/route/{routePosition}/deliver` rejeita viagem inexistente com HTTP `404`.
 - O endpoint `POST /api/trips/{id}/route/{routePosition}/deliver` rejeita posição inexistente com HTTP `404`.
 - O endpoint `POST /api/trips/{id}/route/{routePosition}/deliver` rejeita viagem que não esteja `IN_ROUTE` com HTTP `400`.
+- O endpoint `POST /api/trips/{id}/route/{routePosition}/deliver` rejeita corpo ausente, código ausente, código inválido ou drone que ainda não alcançou a posição com HTTP `400`.
 - O endpoint `POST /api/trips/{id}/route/{routePosition}/deliver` rejeita posição negativa, fora de ordem ou já entregue com HTTP `400`.
 - O endpoint `POST /api/trips/{id}/complete` altera a viagem para `COMPLETED`.
 - O endpoint `POST /api/trips/{id}/complete` altera o drone associado para `AVAILABLE`.
-- O endpoint `POST /api/trips/{id}/complete` altera os pedidos associados para `DELIVERED`.
+- O endpoint `POST /api/trips/{id}/complete` exige que todas as posições da rota estejam resolvidas antes de concluir.
 - O endpoint `POST /api/trips/{id}/complete` altera a viagem para `RETURNED_EARLY` quando a bateria atual não comporta a rota completa.
 - O retorno antecipado preserva como `DELIVERED` somente posições da rota já reportadas como entregues.
 - O endpoint `POST /api/trips/{id}/complete` altera pedidos restantes para `PENDING_REASSIGNMENT` no retorno antecipado.
@@ -880,7 +914,7 @@ Erros esperados:
 - Uma viagem `IN_ROUTE` pode ser concluída e passar para `COMPLETED`.
 - Uma viagem `IN_ROUTE` pode retornar antecipadamente e passar para `RETURNED_EARLY`.
 - Uma viagem que ainda não foi concluída pode ser cancelada e passar para `CANCELLED`.
-- A conclusão de uma viagem marca seus pedidos como `DELIVERED` e libera o drone como `AVAILABLE`.
+- A conclusão de uma viagem exige posições de rota já resolvidas e libera o drone como `AVAILABLE`.
 - A API operacional permite cadastrar drones com status inicial `AVAILABLE`.
 - A API operacional permite listar todos os drones e listar apenas drones disponíveis.
 - A API operacional permite cadastrar pedidos com status inicial `REQUESTED`.
@@ -895,19 +929,30 @@ Erros esperados:
 - O dashboard frontend diferencia viagens no mapa 2D com cores, chips de seleção, setas de direção e pontos numerados pela ordem da rota.
 - O dashboard frontend exibe o marcador do drone em movimento conforme o estado de simulação da viagem.
 - O backend permite avançar uma viagem por tempo simulado com `POST /api/trips/{id}/simulation/tick`.
-- A simulação automática inicia viagens planejadas, move o drone, consome bateria, registra entregas alcançadas e conclui a viagem quando a rota termina.
+- A simulação automática inicia viagens planejadas, move o drone, consome bateria, solicita disponibilidade do cliente na aproximação, para em entregas alcançadas aguardando confirmação do cliente e conclui a viagem quando a rota termina.
+- A simulação automática retorna o drone à base e marca o pacote atual como `NOT_DELIVERED` se o cliente não responder à solicitação de disponibilidade.
 - A simulação automática aciona retorno antecipado quando a rota restante deixa de ser segura para a bateria atual.
 - O dashboard frontend permite consultar filas operacionais de entrega, reatribuição e recarga.
 - O dashboard frontend permite cadastrar drones e pedidos usando os endpoints existentes da API.
+- O dashboard frontend permite informar horário confirmado ao cadastrar pedidos.
 - O dashboard frontend permite acionar o planejamento persistido com opção de rota otimizada.
 - O dashboard frontend permite cadastrar, listar e desativar obstáculos usando os endpoints existentes da API.
 - O dashboard frontend permite cadastrar e consultar avaliações usando os endpoints existentes da API.
 - O dashboard frontend permite executar ações operacionais de drones usando os endpoints existentes da API.
+- O dashboard frontend permite excluir drones no painel Admin.
+- O dashboard frontend permite cancelar ou reenviar para planejamento pedidos não alocados.
+- O dashboard frontend apresenta uma área dedicada para tratar pedidos não alocados.
 - O dashboard frontend permite executar ações operacionais de viagens usando os endpoints existentes da API.
 - O dashboard frontend permite alternar entre experiência Admin e experiência Cliente.
 - A experiência Admin mantém acesso ao painel operacional completo.
-- A experiência Cliente permite solicitar entrega informando peso e coordenadas.
+- A experiência Cliente permite solicitar entrega informando peso, coordenadas e horário confirmado.
+- A experiência Cliente deve manter uma aba `Meus pedidos` com os pedidos vinculados à conta autenticada para alternar rapidamente o pedido acompanhado.
 - A experiência Cliente permite acompanhar pedido por ID ou código.
+- A experiência Cliente permite confirmar disponibilidade quando o drone está chegando ao destino.
+- A experiência Cliente permite confirmar recebimento digitando o próprio código de rastreio do pedido acompanhado.
+- A experiência Cliente exibe um aviso interativo com som quando o drone está chegando ao destino.
+- A experiência Cliente exibe mensagens para pedidos não alocados, não entregues e cancelados.
+- O dashboard frontend permite alternar o mês do relatório mensal de produtividade.
 - A experiência Cliente exibe mapa da viagem associada ao pedido acompanhado quando houver planejamento.
 - A experiência Cliente permite cadastrar avaliação e consultar avaliações públicas.
 - O dashboard frontend apresenta uma jornada guiada para acompanhar cadastro, obstáculo opcional, planejamento, início, entregas, telemetria e encerramento.
@@ -916,6 +961,8 @@ Erros esperados:
 - O dashboard frontend exibe os status de drones, pedidos e viagens em português.
 - O dashboard frontend apresenta descrições ao passar o cursor sobre os botões de ação da consulta operacional.
 - O endpoint `POST /internal/demo/reset-and-seed?confirmation=RESET_DEMO_DATA` limpa os dados operacionais atuais e recria um cenário demo determinístico.
+- Endpoints internos sob `/internal` exigem autenticação por header `X-Internal-Api-Key`.
+- Chamadas internas sem chave ou com chave inválida retornam HTTP `401`.
 - O endpoint interno de demo rejeita chamadas sem a confirmação `RESET_DEMO_DATA` com HTTP `400`.
 - O dashboard frontend permite recriar um cenário demo com drones, pedidos, obstáculo, avaliação e planejamento otimizado usando o endpoint interno controlado.
 - O dashboard frontend exige confirmação antes de recriar o cenário demo e limpar dados operacionais.

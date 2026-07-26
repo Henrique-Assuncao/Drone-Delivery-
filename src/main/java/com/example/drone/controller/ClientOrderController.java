@@ -7,82 +7,68 @@ import com.example.drone.service.*;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/orders")
-public class OrderController {
+@RequestMapping("/api/client/orders")
+public class ClientOrderController {
 
+    private final ClientAuthenticationService authenticationService;
     private final OrderRegistrationService registrationService;
-    private final OrderQueryService queryService;
-    private final OrderOperationService operationService;
+    private final OrderStorage orderStorage;
 
-    public OrderController(
+    public ClientOrderController(
+            ClientAuthenticationService authenticationService,
             OrderRegistrationService registrationService,
-            OrderQueryService queryService,
-            OrderOperationService operationService
+            OrderStorage orderStorage
     ) {
+        this.authenticationService = authenticationService;
         this.registrationService = registrationService;
-        this.queryService = queryService;
-        this.operationService = operationService;
+        this.orderStorage = orderStorage;
+    }
+
+    @GetMapping
+    public List<ClientOrderResponse> list(
+            @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader
+    ) {
+        ClientUserEntity user = authenticationService.authenticate(authorizationHeader);
+
+        return orderStorage.findByClientUserId(user.getId()).stream()
+                .map(this::toResponse)
+                .toList();
     }
 
     @PostMapping
-    public ResponseEntity<OrderResponse> create(@RequestBody CreateOrderRequest request) {
+    public ResponseEntity<ClientOrderResponse> create(
+            @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader,
+            @RequestBody(required = false) CreateClientOrderRequest request
+    ) {
         if (request == null) {
             throw new InvalidInputException("request body must not be null");
         }
 
+        ClientUserEntity user = authenticationService.authenticate(authorizationHeader);
         OrderEntity order = registrationService.register(
                 request.identifier(),
                 toCoordinate(request.location()),
                 request.weight(),
-                request.priority(),
-                request.confirmedDeliveryTime()
+                Priority.MEDIUM,
+                request.confirmedDeliveryTime(),
+                user
         );
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(order, true));
-    }
-
-    @GetMapping
-    public List<OrderResponse> list(@RequestParam(required = false) OrderStatus status) {
-        List<OrderEntity> orders = status == null
-                ? queryService.findAll()
-                : queryService.findByStatus(status);
-
-        return orders.stream()
-                .map(order -> toResponse(order, false))
-                .toList();
-    }
-
-    @GetMapping("/{id}")
-    public OrderResponse findById(@PathVariable Long id) {
-        return toResponse(queryService.findById(id), false);
-    }
-
-    @PostMapping("/{id}/cancel")
-    public OrderResponse cancel(@PathVariable Long id, @RequestBody(required = false) CancelOrderRequest request) {
-        if (request == null) {
-            throw new InvalidInputException("request body must not be null");
-        }
-
-        return toResponse(operationService.cancelUnallocated(id, request.reasonOrThrow()), false);
-    }
-
-    @PostMapping("/{id}/requeue")
-    public OrderResponse requeue(@PathVariable Long id) {
-        return toResponse(operationService.requeueUnallocated(id), false);
+        return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(order));
     }
 
     private Coordinate toCoordinate(LocationRequest location) {
@@ -93,8 +79,8 @@ public class OrderController {
         return new Coordinate(location.x(), location.y());
     }
 
-    private OrderResponse toResponse(OrderEntity order, boolean includeDeliveryConfirmationCode) {
-        return new OrderResponse(
+    private ClientOrderResponse toResponse(OrderEntity order) {
+        return new ClientOrderResponse(
                 order.getId(),
                 order.getIdentifier(),
                 new LocationResponse(order.getLocationX(), order.getLocationY()),
@@ -103,37 +89,25 @@ public class OrderController {
                 order.getStatus(),
                 order.getQueuedAt(),
                 order.getConfirmedDeliveryTime(),
-                includeDeliveryConfirmationCode ? order.getDeliveryConfirmationCode() : null,
+                order.getDeliveryConfirmationCode(),
                 order.getStatusReason()
         );
     }
 
-    public record CreateOrderRequest(
+    public record CreateClientOrderRequest(
             String identifier,
             LocationRequest location,
             double weight,
-            Priority priority,
             @JsonFormat(shape = JsonFormat.Shape.STRING)
             Instant confirmedDeliveryTime
     ) {
-    }
-
-    public record CancelOrderRequest(String reason) {
-
-        String reasonOrThrow() {
-            if (reason == null || reason.isBlank()) {
-                throw new InvalidInputException("cancel reason must not be blank");
-            }
-
-            return reason;
-        }
     }
 
     public record LocationRequest(double x, double y) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record OrderResponse(
+    public record ClientOrderResponse(
             Long id,
             String identifier,
             LocationResponse location,

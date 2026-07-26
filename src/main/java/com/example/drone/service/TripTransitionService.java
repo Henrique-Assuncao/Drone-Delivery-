@@ -68,7 +68,11 @@ public class TripTransitionService {
             return returnEarly(trip);
         }
 
-        completeAllOrders(trip);
+        if (orderedTripOrders(trip).stream().anyMatch(tripOrder -> !tripOrder.isResolved())) {
+            throw new InvalidInputException("all route positions must be resolved before completing trip");
+        }
+
+        completeTrip(trip);
 
         return trip;
     }
@@ -93,7 +97,7 @@ public class TripTransitionService {
     }
 
     @Transactional
-    public TripEntity deliverRoutePosition(Long id, int routePosition) {
+    public TripEntity deliverRoutePosition(Long id, int routePosition, String confirmationCode) {
         TripEntity trip = storage.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("trip not found"));
 
@@ -113,7 +117,7 @@ public class TripTransitionService {
 
         boolean hasUndeliveredPreviousRoutePosition = tripOrders.stream()
                 .filter(tripOrder -> tripOrder.getRoutePosition() < routePosition)
-                .anyMatch(tripOrder -> !tripOrder.isDelivered());
+                .anyMatch(tripOrder -> !tripOrder.isResolved());
 
         if (hasUndeliveredPreviousRoutePosition) {
             throw new InvalidInputException("previous route positions must be delivered first");
@@ -123,8 +127,101 @@ public class TripTransitionService {
             throw new InvalidInputException("route position already delivered");
         }
 
+        if (routeOrder.isDeliveryFailed()) {
+            throw new InvalidInputException("route position already marked not delivered");
+        }
+
+        if (confirmationCode == null || confirmationCode.isBlank()) {
+            throw new InvalidInputException("delivery confirmation code must not be blank");
+        }
+
+        if (!routeOrder.isAvailabilityConfirmed()) {
+            throw new InvalidInputException("delivery availability must be confirmed before delivery");
+        }
+
+        if (!hasReachedRoutePosition(trip, routeOrder)) {
+            throw new InvalidInputException("drone has not reached route position yet");
+        }
+
+        routeOrder.markDeliveryConfirmationRequested(Instant.now());
+        if (DeliveryAvailabilityPolicy.hasDeliveryConfirmationExpired(routeOrder, Instant.now())) {
+            throw new InvalidInputException("delivery confirmation window expired");
+        }
+
+        if (!routeOrder.getOrder().getDeliveryConfirmationCode().equalsIgnoreCase(confirmationCode.trim())) {
+            throw new InvalidInputException("delivery confirmation code is invalid");
+        }
+
         routeOrder.markDelivered();
         routeOrder.getOrder().changeStatus(OrderStatus.DELIVERED);
+
+        return trip;
+    }
+
+    @Transactional
+    public TripEntity confirmRouteAvailability(Long id, int routePosition, boolean available) {
+        TripEntity trip = storage.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("trip not found"));
+
+        if (trip.getStatus() != TripStatus.IN_ROUTE) {
+            throw new InvalidInputException("trip must be IN_ROUTE to confirm delivery availability");
+        }
+
+        if (routePosition < 0) {
+            throw new InvalidInputException("routePosition must not be negative");
+        }
+
+        List<TripOrderEntity> tripOrders = orderedTripOrders(trip);
+        TripOrderEntity routeOrder = tripOrders.stream()
+                .filter(tripOrder -> tripOrder.getRoutePosition() == routePosition)
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("trip route position not found"));
+
+        boolean hasUndeliveredPreviousRoutePosition = tripOrders.stream()
+                .filter(tripOrder -> tripOrder.getRoutePosition() < routePosition)
+                .anyMatch(tripOrder -> !tripOrder.isResolved());
+
+        if (hasUndeliveredPreviousRoutePosition) {
+            throw new InvalidInputException("previous route positions must be delivered first");
+        }
+
+        if (routeOrder.isDelivered()) {
+            throw new InvalidInputException("route position already delivered");
+        }
+
+        if (routeOrder.isDeliveryFailed()) {
+            throw new InvalidInputException("route position already marked not delivered");
+        }
+
+        if (routeOrder.getAvailabilityNotifiedAt() == null) {
+            throw new InvalidInputException("delivery availability has not been requested yet");
+        }
+
+        Instant now = Instant.now();
+        if (DeliveryAvailabilityPolicy.hasResponseExpired(routeOrder, now)) {
+            TripDeliveryReturnOperations.returnToBaseWithUndeliveredPackage(
+                    trip,
+                    routeOrder,
+                    DeliveryAvailabilityPolicy.UNCONFIRMED_AVAILABILITY_REASON,
+                    now
+            );
+            return trip;
+        }
+
+        if (!available) {
+            TripDeliveryReturnOperations.returnToBaseWithUndeliveredPackage(
+                    trip,
+                    routeOrder,
+                    DeliveryAvailabilityPolicy.DECLINED_AVAILABILITY_REASON,
+                    now
+            );
+            return trip;
+        }
+
+        routeOrder.markAvailabilityConfirmed(now);
+        if (hasReachedRoutePosition(trip, routeOrder)) {
+            routeOrder.markDeliveryConfirmationRequested(now);
+        }
 
         return trip;
     }
@@ -158,6 +255,8 @@ public class TripTransitionService {
             OrderEntity order = tripOrder.getOrder();
             if (tripOrder.isDelivered()) {
                 order.changeStatus(OrderStatus.DELIVERED);
+            } else if (tripOrder.isDeliveryFailed()) {
+                order.changeStatus(OrderStatus.NOT_DELIVERED, tripOrder.getDeliveryFailureReason());
             } else {
                 order.changeStatus(OrderStatus.PENDING_REASSIGNMENT);
             }
@@ -166,15 +265,10 @@ public class TripTransitionService {
         return trip;
     }
 
-    private void completeAllOrders(TripEntity trip) {
+    private void completeTrip(TripEntity trip) {
         trip.changeStatus(TripStatus.COMPLETED);
         trip.markEnded(Instant.now());
         trip.getDrone().changeStatus(DroneStatus.AVAILABLE);
-
-        for (TripOrderEntity tripOrder : trip.getTripOrders()) {
-            tripOrder.markDelivered();
-            tripOrder.getOrder().changeStatus(OrderStatus.DELIVERED);
-        }
     }
 
     @Transactional
@@ -192,7 +286,9 @@ public class TripTransitionService {
 
         for (TripOrderEntity tripOrder : trip.getTripOrders()) {
             OrderEntity order = tripOrder.getOrder();
-            if (order.getStatus() != OrderStatus.DELIVERED) {
+            if (tripOrder.isDeliveryFailed()) {
+                order.changeStatus(OrderStatus.NOT_DELIVERED, tripOrder.getDeliveryFailureReason());
+            } else if (order.getStatus() != OrderStatus.DELIVERED) {
                 order.changeStatus(OrderStatus.REQUESTED);
             }
         }
@@ -209,6 +305,11 @@ public class TripTransitionService {
 
     private Coordinate locationOf(OrderEntity order) {
         return new Coordinate(order.getLocationX(), order.getLocationY());
+    }
+
+    private boolean hasReachedRoutePosition(TripEntity trip, TripOrderEntity routeOrder) {
+        double deliveryDistance = routeOrder.getEstimatedDeliveryTime() * trip.getDrone().getSpeed();
+        return trip.getSimulationTravelledDistance() + 1.0E-9 >= deliveryDistance;
     }
 
     private List<TripOrderEntity> orderedTripOrders(TripEntity trip) {
