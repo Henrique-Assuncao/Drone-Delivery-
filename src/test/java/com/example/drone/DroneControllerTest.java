@@ -72,7 +72,7 @@ class DroneControllerTest {
                 .andExpect(jsonPath("$.batteryLevel").value(100.0))
                 .andExpect(jsonPath("$.batteryConsumptionPerDistanceUnit").value(1.0))
                 .andExpect(jsonPath("$.minimumReturnBattery").value(20.0))
-                .andExpect(jsonPath("$.speed").value(1.0))
+                .andExpect(jsonPath("$.speed").value(60.0))
                 .andExpect(jsonPath("$.chargingRate").value(10.0));
     }
 
@@ -191,7 +191,7 @@ class DroneControllerTest {
                 .andExpect(jsonPath("$.batteryLevel").value(100.0))
                 .andExpect(jsonPath("$.batteryConsumptionPerDistanceUnit").value(1.0))
                 .andExpect(jsonPath("$.minimumReturnBattery").value(20.0))
-                .andExpect(jsonPath("$.speed").value(1.0))
+                .andExpect(jsonPath("$.speed").value(60.0))
                 .andExpect(jsonPath("$.chargingRate").value(10.0));
     }
 

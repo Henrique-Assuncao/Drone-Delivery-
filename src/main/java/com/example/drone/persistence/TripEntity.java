@@ -150,7 +150,7 @@ public class TripEntity {
     }
 
     public double getEstimatedDuration() {
-        return totalDistance / drone.getSpeed();
+        return MeasurementUnits.minutesForDistance(totalDistance, drone.getSpeed());
     }
 
     public double getAverageDeliveryTime() {

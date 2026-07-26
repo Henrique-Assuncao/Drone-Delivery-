@@ -6,6 +6,8 @@ import com.example.drone.persistence.*;
 import com.example.drone.service.*;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,6 +21,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/trips")
+@Tag(name = "Viagens", description = "Consulta e transições operacionais de viagens.")
 public class TripController {
 
     private final TripQueryService queryService;
@@ -169,9 +172,13 @@ public class TripController {
             List<Long> orders,
             List<Long> route,
             List<TripRouteProgressResponse> routeProgress,
+            @Schema(description = "Peso total dos pacotes na viagem em quilogramas (kg).", example = "9.0")
             double totalWeight,
+            @Schema(description = "Distância total planejada da viagem em quilômetros (km).", example = "20.0")
             double totalDistance,
+            @Schema(description = "Duração estimada da viagem em minutos (min).", example = "20.0")
             double estimatedDuration,
+            @Schema(description = "Tempo médio estimado de entrega em minutos (min).", example = "8.0")
             double averageDeliveryTime,
             TripSimulationState simulation
     ) {
@@ -183,6 +190,7 @@ public class TripController {
             boolean delivered,
             @JsonFormat(shape = JsonFormat.Shape.STRING)
             Instant deliveredAt,
+            @Schema(description = "Tempo estimado até esta entrega em minutos (min).", example = "5.0")
             double estimatedDeliveryTime,
             @JsonFormat(shape = JsonFormat.Shape.STRING)
             Instant availabilityNotifiedAt,
@@ -200,7 +208,10 @@ public class TripController {
     ) {
     }
 
-    public record TripTelemetryRequest(Double batteryLevel) {
+    public record TripTelemetryRequest(
+            @Schema(description = "Nível atual de bateria em percentual (%).", example = "70.0")
+            Double batteryLevel
+    ) {
 
         double batteryLevelOrThrow() {
             if (batteryLevel == null) {
@@ -236,6 +247,7 @@ public class TripController {
     public record TripTelemetryResponse(
             Long id,
             Long tripId,
+            @Schema(description = "Nível de bateria reportado em percentual (%).", example = "70.0")
             double batteryLevel,
             @JsonFormat(shape = JsonFormat.Shape.STRING)
             Instant reportedAt

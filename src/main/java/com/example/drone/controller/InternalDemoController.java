@@ -3,6 +3,8 @@ package com.example.drone.controller;
 import com.example.drone.exception.*;
 import com.example.drone.service.*;
 
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -10,6 +12,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/internal/demo")
+@Tag(name = "Interno - Demo", description = "Reset e recriação de cenário de demonstração.")
+@SecurityRequirement(name = "internalApiKey")
 public class InternalDemoController {
 
     public static final String RESET_CONFIRMATION = "RESET_DEMO_DATA";

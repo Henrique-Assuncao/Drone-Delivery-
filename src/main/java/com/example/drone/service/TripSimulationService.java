@@ -71,7 +71,7 @@ public class TripSimulationService {
             }
         }
 
-        double distanceToAdvance = elapsedMinutes * trip.getDrone().getSpeed();
+        double distanceToAdvance = MeasurementUnits.distanceForMinutes(elapsedMinutes, trip.getDrone().getSpeed());
         double nextConfirmationDistance = nextOpenOrder == null
                 ? trip.getTotalDistance()
                 : deliveryDistanceFor(trip, nextOpenOrder);
@@ -191,8 +191,9 @@ public class TripSimulationService {
             return;
         }
 
-        double minutesUntilDelivery = (deliveryDistanceFor(trip, tripOrder) - travelledDistance) / speed;
-        if (minutesUntilDelivery >= 0 && minutesUntilDelivery <= DeliveryAvailabilityPolicy.NOTIFICATION_WINDOW_MINUTES) {
+        double remainingDistance = deliveryDistanceFor(trip, tripOrder) - travelledDistance;
+        double minutesUntilDelivery = MeasurementUnits.minutesForDistance(Math.max(0.0, remainingDistance), speed);
+        if (remainingDistance >= 0 && minutesUntilDelivery <= DeliveryAvailabilityPolicy.NOTIFICATION_WINDOW_MINUTES) {
             tripOrder.markAvailabilityNotified(now);
         }
     }
@@ -286,7 +287,7 @@ public class TripSimulationService {
     }
 
     private static double deliveryDistanceFor(TripEntity trip, TripOrderEntity tripOrder) {
-        return tripOrder.getEstimatedDeliveryTime() * trip.getDrone().getSpeed();
+        return MeasurementUnits.distanceForMinutes(tripOrder.getEstimatedDeliveryTime(), trip.getDrone().getSpeed());
     }
 
     private Coordinate locationAt(TripEntity trip, double travelledDistance) {

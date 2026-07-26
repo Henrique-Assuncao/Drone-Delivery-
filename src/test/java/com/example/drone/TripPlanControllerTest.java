@@ -63,7 +63,7 @@ class TripPlanControllerTest {
                 100.0,
                 1.0,
                 20.0,
-                2.0,
+                120.0,
                 10.0
         ));
         OrderEntity order = orderStorage.save(new OrderEntity(null, "ORDER-1", 3.0, 4.0, 5.0, Priority.HIGH, OrderStatus.REQUESTED));
@@ -101,7 +101,7 @@ class TripPlanControllerTest {
                 100.0,
                 1.0,
                 20.0,
-                2.0,
+                120.0,
                 10.0
         ));
         OrderEntity lowPriorityOrder = orderStorage.save(new OrderEntity(null, "ORDER-LOW", 1.0, 0.0, 9.0, Priority.LOW, OrderStatus.REQUESTED));

@@ -25,6 +25,7 @@ import {
   PowerOff,
   RefreshCcw,
   Route,
+  Ruler,
   Search,
   Send,
   Star,
@@ -117,6 +118,9 @@ const simulationTickIntervalMs = 2500;
 const simulationTickMinutes = 1;
 const approachNotificationWindowMinutes = 2;
 const clientAuthTokenStorageKey = "droneDelivery.clientAuthToken";
+const mapViewportMinimumSizeKilometers = 0.12;
+const mapViewportPaddingRatio = 0.28;
+const mapObstacleContextRatio = 0.7;
 
 type Experience = "admin" | "client";
 type AdminSection = "overview" | "operations" | "planning" | "feedback";
@@ -175,6 +179,11 @@ const mapRouteModeLabels: Record<MapRouteMode, string> = {
 };
 
 const tripRouteColors = ["#15616d", "#2b5c9e", "#a56013", "#257a4f", "#7a4f9a", "#aa2e25", "#3f6f73", "#7c5b2f"];
+const measurementUnits = {
+  weight: "kg",
+  distance: "km",
+  speed: "km/h"
+} as const;
 
 interface TripActionOptions {
   routePosition?: number;
@@ -277,6 +286,13 @@ interface MapViewport {
   minX: number;
   minY: number;
   size: number;
+}
+
+interface MapBounds {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
 }
 
 interface MapRouteSegment {
@@ -1805,8 +1821,8 @@ function TripDetailPanel({
         <DetailStat label="Drone" value={`#${trip.droneId}`} />
         <DetailStat label="Pedidos" value={trip.orders.length} />
         <DetailStat label="Progresso" value={`${deliveredCount(trip)} / ${trip.routeProgress.length}`} />
-        <DetailStat label="Peso" value={formatNumber(trip.totalWeight)} />
-        <DetailStat label="Distância" value={formatNumber(trip.totalDistance)} />
+        <DetailStat label="Peso" value={formatWeight(trip.totalWeight)} />
+        <DetailStat label="Distância" value={formatDistance(trip.totalDistance)} />
         <DetailStat label="Duração" value={formatDuration(trip.estimatedDuration)} />
         <DetailStat label="Tempo médio" value={formatDuration(trip.averageDeliveryTime)} />
       </div>
@@ -1900,11 +1916,13 @@ function OperationMap({
   showRouteControls?: boolean;
 }) {
   const visibleTrips = (routeMode === "all" ? trips : [selectedTrip]).filter((trip) => trip.routeProgress.length > 0);
-  const viewport = buildMapViewport(orders, obstacles);
+  const viewport = buildMapViewport(visibleTrips, orders, obstacles);
   const routeLayers = visibleTrips
     .map((trip) => buildMapRouteLayer(trip, orders, viewport, selectedTrip.id))
     .sort((left, right) => Number(left.selected) - Number(right.selected));
   const orderHighlights = buildMapOrderHighlights(routeLayers);
+  const visibleObstacles = obstacles.filter((obstacle) => obstacleIntersectsViewport(obstacle, viewport));
+  const visibleOrderMarkers = orders.filter((order) => orderHighlights.has(order.id) || mapPointIsInsideViewport(order.location, viewport));
 
   return (
     <section className="detailSubpanel mapPanel" aria-label="Mapa 2D da operação">
@@ -1966,6 +1984,14 @@ function OperationMap({
       ) : null}
 
       <div className="mapCanvas">
+        <div
+          className="mapScaleBadge"
+          title={`Área exibida: ${formatDistance(viewport.size)} por ${formatDistance(viewport.size)}`}
+        >
+          <Ruler size={14} aria-hidden="true" />
+          <span>Escala {formatDistance(viewport.size)}</span>
+        </div>
+
         {routeLayers.flatMap((layer) =>
           layer.routeSegments.map((segment) => (
             <div
@@ -1981,7 +2007,7 @@ function OperationMap({
           ))
         )}
 
-        {obstacles.map((obstacle) => {
+        {visibleObstacles.map((obstacle) => {
           const position = projectPoint(obstacle.center, viewport);
           const diameter = (obstacle.radius * 2 * 100) / viewport.size;
 
@@ -2026,7 +2052,7 @@ function OperationMap({
           );
         })}
 
-        {orders.map((order) => {
+        {visibleOrderMarkers.map((order) => {
           const highlight = orderHighlights.get(order.id);
 
           return (
@@ -2422,7 +2448,7 @@ function ClientOrdersPanel({
               </div>
               <div className="clientOrderItemMeta">
                 <span>{formatDateTime(order.confirmedDeliveryTime)}</span>
-                <span>{formatNumber(order.weight)} kg</span>
+                <span>{formatWeight(order.weight)}</span>
                 <span>{formatLocation(order.location.x, order.location.y)}</span>
                 <span>{trip ? `Viagem #${trip.id}` : "Sem viagem"}</span>
                 <span>{routeProgress ? formatDuration(routeProgress.estimatedDeliveryTime) : "-"}</span>
@@ -2465,7 +2491,7 @@ function ClientOrderForm({
       <ToolHeader icon={<PackageCheck size={18} />} title="Novo pedido" />
       <div className="formGrid compact">
         <TextField
-          label="Peso"
+          label="Peso (kg)"
           type="number"
           min="0.1"
           step="0.1"
@@ -2475,7 +2501,7 @@ function ClientOrderForm({
           icon={<Weight size={15} />}
         />
         <TextField
-          label="X"
+          label="X (km)"
           type="number"
           step="0.1"
           value={form.x}
@@ -2484,7 +2510,7 @@ function ClientOrderForm({
           icon={<MapPin size={15} />}
         />
         <TextField
-          label="Y"
+          label="Y (km)"
           type="number"
           step="0.1"
           value={form.y}
@@ -2729,7 +2755,7 @@ function UnallocatedOrderTreatmentPanel({
             <div className="queueMeta">
               <span>
                 <Weight size={14} aria-hidden="true" />
-                {formatNumber(order.weight)}
+                {formatWeight(order.weight)}
               </span>
               <span>
                 <MapPin size={14} aria-hidden="true" />
@@ -2856,7 +2882,7 @@ function DeliveryQueueList({ entries, emptyText }: { entries: DeliveryQueueEntry
           <div className="queueMeta">
             <span>
               <Weight size={14} aria-hidden="true" />
-              {formatNumber(entry.weight)}
+              {formatWeight(entry.weight)}
             </span>
             <span>
               <MapPin size={14} aria-hidden="true" />
@@ -2923,7 +2949,7 @@ function CreateDroneForm({
       <div className="formGrid">
         <TextField label="Identificador" value={form.identifier} onChange={(value) => onChange("identifier", value)} required />
         <TextField
-          label="Capacidade"
+          label="Capacidade (kg)"
           type="number"
           min="0.1"
           step="0.1"
@@ -2932,7 +2958,7 @@ function CreateDroneForm({
           required
         />
         <TextField
-          label="Alcance"
+          label="Alcance (km)"
           type="number"
           min="0.1"
           step="0.1"
@@ -2941,7 +2967,7 @@ function CreateDroneForm({
           required
         />
         <TextField
-          label="Bateria"
+          label="Bateria (%)"
           type="number"
           min="0"
           max="100"
@@ -2950,7 +2976,7 @@ function CreateDroneForm({
           onChange={(value) => onChange("batteryLevel", value)}
         />
         <TextField
-          label="Consumo"
+          label="Consumo (%/km)"
           type="number"
           min="0.1"
           step="0.1"
@@ -2958,7 +2984,7 @@ function CreateDroneForm({
           onChange={(value) => onChange("batteryConsumptionPerDistanceUnit", value)}
         />
         <TextField
-          label="Reserva"
+          label="Reserva (%)"
           type="number"
           min="0"
           max="100"
@@ -2967,7 +2993,7 @@ function CreateDroneForm({
           onChange={(value) => onChange("minimumReturnBattery", value)}
         />
         <TextField
-          label="Velocidade"
+          label="Velocidade (km/h)"
           type="number"
           min="0.1"
           step="0.1"
@@ -2975,7 +3001,7 @@ function CreateDroneForm({
           onChange={(value) => onChange("speed", value)}
         />
         <TextField
-          label="Recarga/min"
+          label="Recarga (%/min)"
           type="number"
           min="0.1"
           step="0.1"
@@ -3007,7 +3033,7 @@ function CreateOrderForm({
       <div className="formGrid compact">
         <TextField label="Identificador" value={form.identifier} onChange={(value) => onChange("identifier", value)} required />
         <TextField
-          label="Peso"
+          label="Peso (kg)"
           type="number"
           min="0.1"
           step="0.1"
@@ -3017,7 +3043,7 @@ function CreateOrderForm({
           icon={<Weight size={15} />}
         />
         <TextField
-          label="X"
+          label="X (km)"
           type="number"
           step="0.1"
           value={form.x}
@@ -3026,7 +3052,7 @@ function CreateOrderForm({
           icon={<MapPin size={15} />}
         />
         <TextField
-          label="Y"
+          label="Y (km)"
           type="number"
           step="0.1"
           value={form.y}
@@ -3139,7 +3165,7 @@ function ObstacleManager({
         <ToolHeader icon={<Ban size={18} />} title="Novo obstáculo" />
         <div className="formGrid obstacleFormGrid">
           <TextField
-            label="X"
+            label="X (km)"
             type="number"
             step="0.1"
             value={form.x}
@@ -3148,7 +3174,7 @@ function ObstacleManager({
             icon={<MapPin size={15} />}
           />
           <TextField
-            label="Y"
+            label="Y (km)"
             type="number"
             step="0.1"
             value={form.y}
@@ -3157,7 +3183,7 @@ function ObstacleManager({
             icon={<MapPin size={15} />}
           />
           <TextField
-            label="Raio"
+            label="Raio (km)"
             type="number"
             min="0.1"
             step="0.1"
@@ -3180,7 +3206,7 @@ function ObstacleManager({
               </div>
               <div>
                 <span>Raio</span>
-                <strong>{formatNumber(obstacle.radius)}</strong>
+                <strong>{formatDistance(obstacle.radius)}</strong>
               </div>
               <span className={`statusChip ${obstacle.active ? "available" : "unavailable"}`}>
                 {obstacleStatusLabel(obstacle.active ? "ACTIVE" : "INACTIVE")}
@@ -3864,10 +3890,10 @@ function DroneTable({
             <th>ID</th>
             <th>Identificador</th>
             <th>Status</th>
-            <th>Bateria</th>
-            <th>Capacidade</th>
-            <th>Alcance</th>
-            <th>Velocidade</th>
+            <th>Bateria (%)</th>
+            <th>Capacidade (kg)</th>
+            <th>Alcance (km)</th>
+            <th>Velocidade (km/h)</th>
             <th>Recarga</th>
             <th>Ações</th>
           </tr>
@@ -3883,9 +3909,9 @@ function DroneTable({
               <td>
                 <BatteryMeter value={drone.batteryLevel} />
               </td>
-              <td>{formatNumber(drone.maxWeightCapacity)}</td>
-              <td>{formatNumber(drone.maxRange)}</td>
-              <td>{formatNumber(drone.speed)}</td>
+              <td>{formatWeight(drone.maxWeightCapacity)}</td>
+              <td>{formatDistance(drone.maxRange)}</td>
+              <td>{formatSpeed(drone.speed)}</td>
               <td>{drone.rechargeReason ?? "-"}</td>
               <td>
                 <DroneActions
@@ -4008,8 +4034,8 @@ function OrderTable({
             <th>Identificador</th>
             <th>Status</th>
             <th>Prioridade</th>
-            <th>Peso</th>
-            <th>Localização</th>
+            <th>Peso (kg)</th>
+            <th>Localização (km)</th>
             <th>Horário confirmado</th>
             <th>Entrada na fila</th>
             <th>Mensagem</th>
@@ -4027,7 +4053,7 @@ function OrderTable({
               <td>
                 <span className={`priorityChip ${order.priority.toLowerCase()}`}>{order.priority}</span>
               </td>
-              <td>{formatNumber(order.weight)}</td>
+              <td>{formatWeight(order.weight)}</td>
               <td>{formatLocation(order.location.x, order.location.y)}</td>
               <td>{formatDateTime(order.confirmedDeliveryTime)}</td>
               <td>{formatDateTime(order.queuedAt)}</td>
@@ -4115,7 +4141,7 @@ function TripTable({
             <th>Status</th>
             <th>Pedidos</th>
             <th>Progresso</th>
-            <th>Distância</th>
+            <th>Distância (km)</th>
             <th>Duração</th>
             <th>Tempo médio</th>
             <th>Telemetria</th>
@@ -4134,7 +4160,7 @@ function TripTable({
               <td>
                 {deliveredCount(trip)} / {trip.routeProgress.length}
               </td>
-              <td>{formatNumber(trip.totalDistance)}</td>
+              <td>{formatDistance(trip.totalDistance)}</td>
               <td>{formatDuration(trip.estimatedDuration)}</td>
               <td>{formatDuration(trip.averageDeliveryTime)}</td>
               <td>
@@ -4876,7 +4902,7 @@ function approachingDeliveryNotificationFromSimulation(
     return null;
   }
 
-  const minutesUntilDelivery = routeProgress.estimatedDeliveryTime - simulation.travelledDistance / speed;
+  const minutesUntilDelivery = routeProgress.estimatedDeliveryTime - minutesForDistance(simulation.travelledDistance, speed);
   if (minutesUntilDelivery <= 0 || minutesUntilDelivery > approachNotificationWindowMinutes) {
     return null;
   }
@@ -4899,7 +4925,7 @@ function droneSpeedForSimulation(snapshot: DashboardSnapshot, trip: Trip, simula
     return drone.speed;
   }
 
-  return trip.estimatedDuration > 0 ? trip.totalDistance / trip.estimatedDuration : 0;
+  return trip.estimatedDuration > 0 ? (trip.totalDistance / trip.estimatedDuration) * 60 : 0;
 }
 
 function tripTrackingRank(status: TripStatus) {
@@ -4955,25 +4981,7 @@ function clientOrderSteps(status: OrderStatus) {
 }
 
 function buildMapRouteLayer(trip: Trip, orders: Order[], viewport: MapViewport, selectedTripId: number): MapRouteLayer {
-  const routeProgress = sortedRouteProgress(trip);
-  const routeOrders = routeProgress
-    .map((progress) => ({
-      progress,
-      order: orders.find((order) => order.id === progress.orderId)
-    }))
-    .filter((entry): entry is { progress: Trip["routeProgress"][number]; order: Order } => entry.order !== undefined);
-  const routePoints: MapRoutePoint[] = [
-    { key: `trip-${trip.id}-base-start`, x: 0, y: 0, label: "Base" },
-    ...routeOrders.map(({ progress, order }) => ({
-      key: `trip-${trip.id}-order-${order.id}`,
-      x: order.location.x,
-      y: order.location.y,
-      label: `${order.identifier} (${progress.routePosition + 1})`,
-      orderId: order.id,
-      routePosition: progress.routePosition
-    })),
-    { key: `trip-${trip.id}-base-end`, x: 0, y: 0, label: "Base" }
-  ];
+  const routePoints = buildMapRoutePoints(trip, orders);
 
   return {
     trip,
@@ -5005,34 +5013,114 @@ function tripRouteColorFor(trip: Trip) {
   return tripRouteColors[Math.abs(trip.id - 1) % tripRouteColors.length];
 }
 
-function buildMapViewport(orders: Order[], obstacles: Obstacle[]): MapViewport {
-  const xs = [0];
-  const ys = [0];
+function buildMapRoutePoints(trip: Trip, orders: Order[]) {
+  const routeProgress = sortedRouteProgress(trip);
+  const routeOrders = routeProgress
+    .map((progress) => ({
+      progress,
+      order: orders.find((order) => order.id === progress.orderId)
+    }))
+    .filter((entry): entry is { progress: Trip["routeProgress"][number]; order: Order } => entry.order !== undefined);
 
-  orders.forEach((order) => {
-    xs.push(order.location.x);
-    ys.push(order.location.y);
-  });
+  return [
+    { key: `trip-${trip.id}-base-start`, x: 0, y: 0, label: "Base" },
+    ...routeOrders.map(({ progress, order }) => ({
+      key: `trip-${trip.id}-order-${order.id}`,
+      x: order.location.x,
+      y: order.location.y,
+      label: `${order.identifier} (${progress.routePosition + 1})`,
+      orderId: order.id,
+      routePosition: progress.routePosition
+    })),
+    { key: `trip-${trip.id}-base-end`, x: 0, y: 0, label: "Base" }
+  ] satisfies MapRoutePoint[];
+}
 
-  obstacles.forEach((obstacle) => {
-    xs.push(obstacle.center.x - obstacle.radius, obstacle.center.x + obstacle.radius);
-    ys.push(obstacle.center.y - obstacle.radius, obstacle.center.y + obstacle.radius);
-  });
-
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const centerX = (minX + maxX) / 2;
-  const centerY = (minY + maxY) / 2;
-  const baseSize = Math.max(maxX - minX, maxY - minY, 1);
-  const size = baseSize * 1.18 + 1;
+function buildMapViewport(trips: Trip[], orders: Order[], obstacles: Obstacle[]): MapViewport {
+  const routePoints = trips.flatMap((trip) => buildMapRoutePoints(trip, orders));
+  const simulationPoints = trips.flatMap((trip) => (trip.simulation ? [trip.simulation.currentLocation] : []));
+  const focusPoints: MapPoint[] = [...routePoints, ...simulationPoints];
+  const basePoints = focusPoints.length ? focusPoints : [{ x: 0, y: 0 }, ...orders.map((order) => order.location)];
+  const routeBounds = boundsForMapPoints(basePoints);
+  const routeSpan = Math.max(routeBounds.maxX - routeBounds.minX, routeBounds.maxY - routeBounds.minY, mapViewportMinimumSizeKilometers);
+  const obstacleContext = expandMapBounds(routeBounds, routeSpan * mapObstacleContextRatio);
+  const contextualObstaclePoints = obstacles
+    .filter((obstacle) => obstacleIntersectsBounds(obstacle, obstacleContext))
+    .flatMap(obstacleBoundsPoints);
+  const bounds = boundsForMapPoints([...basePoints, ...contextualObstaclePoints]);
+  const spanX = bounds.maxX - bounds.minX;
+  const spanY = bounds.maxY - bounds.minY;
+  const contentSize = Math.max(spanX, spanY, mapViewportMinimumSizeKilometers);
+  const size = contentSize * (1 + mapViewportPaddingRatio * 2);
+  const centerX = (bounds.minX + bounds.maxX) / 2;
+  const centerY = (bounds.minY + bounds.maxY) / 2;
 
   return {
     minX: centerX - size / 2,
     minY: centerY - size / 2,
     size
   };
+}
+
+function boundsForMapPoints(points: MapPoint[]): MapBounds {
+  return points.reduce(
+    (bounds, point) => ({
+      minX: Math.min(bounds.minX, point.x),
+      maxX: Math.max(bounds.maxX, point.x),
+      minY: Math.min(bounds.minY, point.y),
+      maxY: Math.max(bounds.maxY, point.y)
+    }),
+    {
+      minX: points[0]?.x ?? 0,
+      maxX: points[0]?.x ?? 0,
+      minY: points[0]?.y ?? 0,
+      maxY: points[0]?.y ?? 0
+    }
+  );
+}
+
+function expandMapBounds(bounds: MapBounds, padding: number): MapBounds {
+  return {
+    minX: bounds.minX - padding,
+    maxX: bounds.maxX + padding,
+    minY: bounds.minY - padding,
+    maxY: bounds.maxY + padding
+  };
+}
+
+function obstacleBoundsPoints(obstacle: Obstacle): MapPoint[] {
+  return [
+    { x: obstacle.center.x - obstacle.radius, y: obstacle.center.y - obstacle.radius },
+    { x: obstacle.center.x + obstacle.radius, y: obstacle.center.y + obstacle.radius }
+  ];
+}
+
+function obstacleIntersectsBounds(obstacle: Obstacle, bounds: MapBounds) {
+  return (
+    obstacle.center.x + obstacle.radius >= bounds.minX &&
+    obstacle.center.x - obstacle.radius <= bounds.maxX &&
+    obstacle.center.y + obstacle.radius >= bounds.minY &&
+    obstacle.center.y - obstacle.radius <= bounds.maxY
+  );
+}
+
+function obstacleIntersectsViewport(obstacle: Obstacle, viewport: MapViewport) {
+  return obstacleIntersectsBounds(obstacle, mapViewportBounds(viewport));
+}
+
+function mapViewportBounds(viewport: MapViewport): MapBounds {
+  return {
+    minX: viewport.minX,
+    maxX: viewport.minX + viewport.size,
+    minY: viewport.minY,
+    maxY: viewport.minY + viewport.size
+  };
+}
+
+function mapPointIsInsideViewport(point: MapPoint, viewport: MapViewport) {
+  const bounds = mapViewportBounds(viewport);
+
+  return point.x >= bounds.minX && point.x <= bounds.maxX && point.y >= bounds.minY && point.y <= bounds.maxY;
 }
 
 function projectPoint(point: MapPoint, viewport: MapViewport) {
@@ -5339,8 +5427,27 @@ function formatNumber(value: number) {
   });
 }
 
+function formatWeight(value: number) {
+  return `${formatNumber(value)} ${measurementUnits.weight}`;
+}
+
+function formatDistance(value: number) {
+  const absoluteValue = Math.abs(value);
+  const maximumFractionDigits = absoluteValue > 0 && absoluteValue < 0.1 ? 3 : absoluteValue < 1 ? 2 : 1;
+
+  return `${value.toLocaleString("pt-BR", { maximumFractionDigits })} ${measurementUnits.distance}`;
+}
+
+function formatSpeed(value: number) {
+  return `${formatNumber(value)} ${measurementUnits.speed}`;
+}
+
 function formatLocation(x: number, y: number) {
-  return `${formatNumber(x)}, ${formatNumber(y)}`;
+  return `${formatDistance(x)}, ${formatDistance(y)}`;
+}
+
+function minutesForDistance(distanceKilometers: number, speedKilometersPerHour: number) {
+  return speedKilometersPerHour > 0 ? (distanceKilometers / speedKilometersPerHour) * 60 : 0;
 }
 
 function formatDateTime(value: string) {

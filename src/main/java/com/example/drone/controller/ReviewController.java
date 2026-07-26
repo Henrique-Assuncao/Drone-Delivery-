@@ -6,6 +6,7 @@ import com.example.drone.persistence.*;
 import com.example.drone.service.*;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,6 +21,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/reviews")
+@Tag(name = "Avaliações", description = "Cadastro e consulta de avaliações públicas do serviço.")
 public class ReviewController {
 
     private final ReviewRegistrationService registrationService;

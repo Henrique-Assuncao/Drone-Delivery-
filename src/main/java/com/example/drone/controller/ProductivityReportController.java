@@ -3,6 +3,7 @@ package com.example.drone.controller;
 import com.example.drone.service.*;
 import com.fasterxml.jackson.annotation.JsonFormat;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -13,6 +14,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/reports/productivity/monthly")
+@Tag(name = "Relatórios", description = "Relatórios mensais de produtividade operacional.")
 public class ProductivityReportController {
 
     private final ProductivityReportService reportService;

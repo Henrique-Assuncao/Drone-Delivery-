@@ -45,7 +45,7 @@ class DroneTest {
         assertEquals(100.0, drone.batteryLevel());
         assertEquals(1.0, drone.batteryConsumptionPerDistanceUnit());
         assertEquals(20.0, drone.minimumReturnBattery());
-        assertEquals(1.0, drone.speed());
+        assertEquals(60.0, drone.speed());
         assertEquals(10.0, drone.chargingRate());
     }
 

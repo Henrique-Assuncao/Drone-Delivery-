@@ -7,6 +7,9 @@ import com.example.drone.service.*;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +25,8 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/client/orders")
+@Tag(name = "Pedidos do Cliente", description = "Solicitação e consulta de pedidos vinculados à conta autenticada.")
+@SecurityRequirement(name = "clientBearerAuth")
 public class ClientOrderController {
 
     private final ClientAuthenticationService authenticationService;
@@ -97,13 +102,19 @@ public class ClientOrderController {
     public record CreateClientOrderRequest(
             String identifier,
             LocationRequest location,
+            @Schema(description = "Peso do pacote em quilogramas (kg).", example = "4.0")
             double weight,
             @JsonFormat(shape = JsonFormat.Shape.STRING)
             Instant confirmedDeliveryTime
     ) {
     }
 
-    public record LocationRequest(double x, double y) {
+    public record LocationRequest(
+            @Schema(description = "Coordenada X do endereço em quilômetros (km) a partir da base.", example = "3.0")
+            double x,
+            @Schema(description = "Coordenada Y do endereço em quilômetros (km) a partir da base.", example = "4.0")
+            double y
+    ) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -111,6 +122,7 @@ public class ClientOrderController {
             Long id,
             String identifier,
             LocationResponse location,
+            @Schema(description = "Peso do pacote em quilogramas (kg).", example = "4.0")
             double weight,
             Priority priority,
             OrderStatus status,
@@ -123,6 +135,11 @@ public class ClientOrderController {
     ) {
     }
 
-    public record LocationResponse(double x, double y) {
+    public record LocationResponse(
+            @Schema(description = "Coordenada X do endereço em quilômetros (km) a partir da base.", example = "3.0")
+            double x,
+            @Schema(description = "Coordenada Y do endereço em quilômetros (km) a partir da base.", example = "4.0")
+            double y
+    ) {
     }
 }

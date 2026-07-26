@@ -118,12 +118,12 @@ Este documento mantém o histórico das decisões tomadas durante o desenvolvime
 | T018 | Testes de integração usarão PostgreSQL local com schema temporário. | Decidida | A suite valida Spring Boot, JPA e Flyway sem reutilizar nem limpar tabelas do schema público de desenvolvimento. |
 | T019 | O contrato HTTP consolidado ficará em `API.md`. | Decidida | Endpoints, payloads, filtros, respostas e erros ficam documentados em um artefato dedicado, enquanto o README permanece focado em execucao e exemplos. |
 | T020 | A otimização de rota usará ordenação determinística por prioridade, peso, distância da base e identificador. | Decidida | A rota passa a refletir critérios operacionais dos pacotes e mantém resultado previsível para o cliente. |
-| T021 | Bateria será modelada inicialmente em percentual e consumo por unidade de distância. | Decidida | O modelo fica simples para consulta e validação de segurança, sem exigir unidade física real de energia neste ciclo. |
-| T022 | Tempo estimado usará distância total da viagem dividida pela velocidade do drone. | Decidida | A primeira estimativa de entrega será determinística, derivada dos dados já persistidos e sem coluna nova no banco. |
+| T021 | Bateria será modelada inicialmente em percentual e consumo por quilômetro. | Decidida | O modelo fica simples para consulta e validação de segurança, usando `%` e `%/km` sem exigir unidade física real de energia neste ciclo. |
+| T022 | Tempo estimado usará `(distância total / velocidade) * 60`. | Decidida | A estimativa combina distância em km e velocidade em km/h para retornar duração em minutos, sem coluna nova no banco. |
 | T023 | Obstáculos começarão como zonas circulares em 2D. | Decidida | O primeiro modelo de desvio fica simples de validar e pode evoluir depois para polígonos ou zonas mais complexas. |
 | T024 | Endpoints internos planejados ficarão sob `/internal`. | Decidida | Recursos operacionais que não fazem parte da API pública ficam separados por caminho desde a primeira implementação. |
 | T025 | Fila de recarga e fila de entrega serão implementadas primeiro como estado persistido simples. | Decidida | O projeto não adotará broker externo antes de existir necessidade real de processamento assíncrono. |
-| T026 | Campos básicos de bateria foram adicionados à tabela `drones` com defaults. | Decidida | Drones existentes continuam válidos após a migration e novos cadastros podem omitir os campos de bateria. |
+| T026 | Campos operacionais de bateria, velocidade e recarga foram adicionados à tabela `drones` com defaults. | Decidida | Drones existentes continuam válidos após a migration e novos cadastros podem omitir esses campos operacionais. |
 | T027 | A bateria mínima usa a fórmula `distância total * consumo + reserva mínima <= bateria atual`. | Decidida | A validação fica determinística e reaproveita a distância total da rota já otimizada. |
 | T028 | A fila de recarga será persistida nos próprios drones com `status`, `rechargeQueuedAt` e `rechargeReason`. | Decidida | A primeira versão da fila fica simples, ordenável e sem tabela ou broker adicional. |
 | T029 | A fila operacional de pedidos será persistida com `queuedAt` na tabela `orders`. | Decidida | O endpoint de fila e o modo `optimizeRoute=false` usam a mesma ordenação por `queuedAt` e `id`. |
@@ -165,6 +165,8 @@ Este documento mantém o histórico das decisões tomadas durante o desenvolvime
 | T065 | Falta de resposta de disponibilidade marcará o pacote como `NOT_DELIVERED`. | Decidida | O drone retorna à base com a encomenda, a viagem fica `RETURNED_EARLY` e o pacote mantém uma tag rastreável de não entrega com motivo em português. |
 | T066 | O cliente terá 1 minuto para informar o código após a chegada do drone. | Decidida | Se o prazo expirar, o pacote fica `NOT_DELIVERED`, a posição é resolvida como falha e o drone segue a rota levando a encomenda de volta para a base. |
 | T067 | A aba Cliente terá `Meus pedidos` vinculada à conta autenticada. | Decidida | Com autenticação de cliente, a interface lista pedidos persistidos da conta e permite alternar o pedido acompanhado sem depender de códigos salvos no navegador. |
+| T068 | A documentação interativa do backend será gerada com Springdoc OpenAPI. | Decidida | O Swagger UI expõe a visão completa do backend, a API pública e a API interna, mantendo os esquemas de autenticação visíveis para teste manual. |
+| T069 | A aplicação usará unidades métricas explícitas no padrão brasileiro. | Decidida | Peso/capacidade ficam em kg; coordenadas, distância, alcance e raio em km; velocidade em km/h; bateria em %, consumo em %/km, recarga em %/min e tempos em min. |
 
 ## Decisões pendentes
 
@@ -255,3 +257,4 @@ Este documento mantém o histórico das decisões tomadas durante o desenvolvime
 - Pedidos passaram a usar o próprio código de rastreio como código de confirmação de entrega, exibido no cadastro e exigido na confirmação feita pela aba Cliente.
 - A experiência Cliente passou a exigir cadastro/login, com senha armazenada por hash PBKDF2 no backend, token assinado para sessão e pedidos vinculados à conta autenticada.
 - A aba `Meus pedidos` passou a listar pedidos persistidos da conta autenticada, substituindo a lista local de códigos salvos no navegador.
+- O backend passou a publicar documentação Swagger/OpenAPI em `/swagger-ui.html`, `/v3/api-docs` e `/v3/api-docs.yaml`, com grupos para API pública, API interna e backend completo.

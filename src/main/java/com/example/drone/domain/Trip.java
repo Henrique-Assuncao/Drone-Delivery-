@@ -81,7 +81,7 @@ public class Trip {
 
         for (Order order : orders) {
             double segmentDistance = DISTANCE_CALCULATOR.segmentDistance(currentLocation, order.location(), obstacles);
-            elapsedTime += segmentDistance / drone.speed();
+            elapsedTime += MeasurementUnits.minutesForDistance(segmentDistance, drone.speed());
             estimatedTimes.add(elapsedTime);
             currentLocation = order.location();
         }

@@ -5,6 +5,8 @@ import com.example.drone.exception.*;
 import com.example.drone.persistence.*;
 import com.example.drone.service.*;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -19,6 +21,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/obstacles")
+@Tag(name = "Obstáculos", description = "Cadastro, consulta e desativação de obstáculos circulares.")
 public class ObstacleController {
 
     private final ObstacleRegistrationService registrationService;
@@ -75,15 +78,37 @@ public class ObstacleController {
         );
     }
 
-    public record CreateObstacleRequest(LocationRequest center, double radius) {
+    public record CreateObstacleRequest(
+            LocationRequest center,
+            @Schema(description = "Raio da zona circular em quilômetros (km).", example = "1.0")
+            double radius
+    ) {
     }
 
-    public record LocationRequest(double x, double y) {
+    @Schema(name = "ObstacleLocationRequest")
+    public record LocationRequest(
+            @Schema(description = "Coordenada X do centro em quilômetros (km) a partir da base.", example = "5.0")
+            double x,
+            @Schema(description = "Coordenada Y do centro em quilômetros (km) a partir da base.", example = "0.0")
+            double y
+    ) {
     }
 
-    public record ObstacleResponse(Long id, LocationResponse center, double radius, boolean active) {
+    public record ObstacleResponse(
+            Long id,
+            LocationResponse center,
+            @Schema(description = "Raio da zona circular em quilômetros (km).", example = "1.0")
+            double radius,
+            boolean active
+    ) {
     }
 
-    public record LocationResponse(double x, double y) {
+    @Schema(name = "ObstacleLocationResponse")
+    public record LocationResponse(
+            @Schema(description = "Coordenada X do centro em quilômetros (km) a partir da base.", example = "5.0")
+            double x,
+            @Schema(description = "Coordenada Y do centro em quilômetros (km) a partir da base.", example = "0.0")
+            double y
+    ) {
     }
 }

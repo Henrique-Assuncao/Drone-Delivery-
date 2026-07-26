@@ -48,7 +48,7 @@ class TripTest {
 
     @Test
     void shouldOrderDeliverySequenceByPriorityWeightAndDistance() {
-        Drone drone = new Drone("DRONE-1", 30.0, 100.0, 100.0, 1.0, 20.0, 2.0, 10.0);
+        Drone drone = new Drone("DRONE-1", 30.0, 100.0, 100.0, 1.0, 20.0, 120.0, 10.0);
         Order lowPriorityOrder = order("ORDER-LOW", 1.0, 0.0, 9.0, Priority.LOW);
         Order mediumPriorityOrder = order("ORDER-MEDIUM", 2.0, 0.0, 9.0, Priority.MEDIUM);
         Order highLightOrder = order("ORDER-HIGH-LIGHT", 10.0, 0.0, 1.0, Priority.HIGH);

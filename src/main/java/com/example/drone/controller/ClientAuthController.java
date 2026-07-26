@@ -5,6 +5,9 @@ import com.example.drone.persistence.*;
 import com.example.drone.service.*;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,6 +22,7 @@ import java.time.Instant;
 
 @RestController
 @RequestMapping("/api/auth")
+@Tag(name = "Autenticação Cliente", description = "Cadastro, login e consulta da sessão do cliente.")
 public class ClientAuthController {
 
     private final ClientAuthenticationService authenticationService;
@@ -28,6 +32,7 @@ public class ClientAuthController {
     }
 
     @PostMapping("/register")
+    @Operation(summary = "Cadastrar cliente")
     public ResponseEntity<AuthResponse> register(@RequestBody(required = false) RegisterRequest request) {
         if (request == null) {
             throw new InvalidInputException("request body must not be null");
@@ -43,6 +48,7 @@ public class ClientAuthController {
     }
 
     @PostMapping("/login")
+    @Operation(summary = "Entrar como cliente")
     public AuthResponse login(@RequestBody(required = false) LoginRequest request) {
         if (request == null) {
             throw new InvalidInputException("request body must not be null");
@@ -52,6 +58,7 @@ public class ClientAuthController {
     }
 
     @GetMapping("/me")
+    @Operation(summary = "Consultar cliente autenticado", security = @SecurityRequirement(name = "clientBearerAuth"))
     public ClientUserResponse me(@RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorizationHeader) {
         return toUserResponse(authenticationService.authenticate(authorizationHeader));
     }

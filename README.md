@@ -6,6 +6,20 @@ Simular o planejamento de entregas feitas por drones em uma cidade representada 
 
 O sistema recebe drones e pedidos no domínio, monta viagens respeitando peso, alcance, prioridade, base fixa e retorno para a base, e separa pedidos que nao podem ser alocados.
 
+## Unidades de medida
+
+A aplicação usa o padrão métrico adotado no Brasil:
+
+- Peso, capacidade e carga: quilogramas (`kg`).
+- Coordenadas X/Y, distância, alcance e raio de obstáculos: quilômetros (`km`).
+- Velocidade média do drone: quilômetros por hora (`km/h`).
+- Bateria e reserva mínima: percentual (`%`).
+- Consumo de bateria: percentual por quilômetro (`%/km`).
+- Taxa de recarga: percentual por minuto (`%/min`).
+- Duração e estimativas de entrega: minutos (`min`).
+
+Com essas unidades, `estimatedDuration` é calculado por `(totalDistance / speed) * 60`, considerando `totalDistance` em km e `speed` em km/h.
+
 ## Tecnologias
 
 - Java, compilado com `release 17`.
@@ -16,6 +30,7 @@ O sistema recebe drones e pedidos no domínio, monta viagens respeitando peso, a
 - Spring Data JPA.
 - PostgreSQL.
 - Flyway.
+- Springdoc OpenAPI e Swagger UI.
 
 Versoes verificadas neste ambiente:
 
@@ -80,6 +95,23 @@ A aplicacao sobe por padrao em:
 ```text
 http://localhost:8080
 ```
+
+## Documentação Swagger/OpenAPI
+
+Com o backend em execução, a documentação interativa fica disponível em:
+
+```text
+http://localhost:8080/swagger-ui.html
+```
+
+A especificação OpenAPI também pode ser consumida diretamente:
+
+```text
+http://localhost:8080/v3/api-docs
+http://localhost:8080/v3/api-docs.yaml
+```
+
+O Swagger UI abre o grupo `backend-completo` por padrão e também possui grupos para visualizar separadamente a API pública ou a API interna. Endpoints da área do cliente usam o esquema `clientBearerAuth`; endpoints `/internal` usam o esquema `internalApiKey` com o header `X-Internal-Api-Key`.
 
 ## Como executar o dashboard
 
@@ -202,12 +234,12 @@ Entrada JSON:
   "batteryLevel": 100.0,
   "batteryConsumptionPerDistanceUnit": 1.0,
   "minimumReturnBattery": 20.0,
-  "speed": 1.0,
+  "speed": 60.0,
   "chargingRate": 10.0
 }
 ```
 
-Os campos de bateria sao opcionais no cadastro. Quando omitidos, a aplicacao usa os valores padrao mostrados no exemplo.
+Os campos operacionais de bateria, velocidade e recarga são opcionais no cadastro. Quando omitidos, a aplicação usa os valores padrão mostrados no exemplo.
 
 Saída JSON:
 
@@ -221,7 +253,7 @@ Saída JSON:
   "batteryLevel": 100.0,
   "batteryConsumptionPerDistanceUnit": 1.0,
   "minimumReturnBattery": 20.0,
-  "speed": 1.0,
+  "speed": 60.0,
   "chargingRate": 10.0
 }
 ```
@@ -252,7 +284,7 @@ Saida JSON:
     "batteryLevel": 100.0,
     "batteryConsumptionPerDistanceUnit": 1.0,
     "minimumReturnBattery": 20.0,
-    "speed": 1.0,
+    "speed": 60.0,
     "chargingRate": 10.0
   }
 ]
@@ -320,7 +352,7 @@ Saída JSON:
   "batteryLevel": 100.0,
   "batteryConsumptionPerDistanceUnit": 1.0,
   "minimumReturnBattery": 20.0,
-  "speed": 1.0,
+  "speed": 60.0,
   "chargingRate": 10.0
 }
 ```
@@ -345,7 +377,7 @@ Saída JSON:
   "batteryLevel": 100.0,
   "batteryConsumptionPerDistanceUnit": 1.0,
   "minimumReturnBattery": 20.0,
-  "speed": 1.0,
+  "speed": 60.0,
   "chargingRate": 10.0
 }
 ```
@@ -380,7 +412,7 @@ Saída JSON:
   "batteryLevel": 100.0,
   "batteryConsumptionPerDistanceUnit": 1.0,
   "minimumReturnBattery": 20.0,
-  "speed": 1.0,
+  "speed": 60.0,
   "chargingRate": 10.0
 }
 ```
@@ -437,7 +469,7 @@ Saída JSON:
   "batteryLevel": 75.0,
   "batteryConsumptionPerDistanceUnit": 1.0,
   "minimumReturnBattery": 20.0,
-  "speed": 1.0,
+  "speed": 60.0,
   "chargingRate": 10.0,
   "rechargeQueuedAt": "2026-07-25T20:00:00Z",
   "rechargeReason": "manual recharge requested"
@@ -794,7 +826,7 @@ Saida JSON:
 }
 ```
 
-`estimatedDuration` é calculado por `totalDistance / speed` do drone associado.
+`estimatedDuration` é calculado por `(totalDistance / speed) * 60` do drone associado.
 `estimatedDeliveryTime` é o tempo acumulado até cada posição da rota, e `averageDeliveryTime` é a média desses tempos por pacote.
 Quando há obstáculos ativos, `totalDistance`, `estimatedDuration`, alcance e bateria usam a distância ajustada pelo desvio.
 
@@ -1195,7 +1227,7 @@ Erros esperados:
 - As consultas de viagens retornam resultados em ordem crescente de `id`.
 - As consultas de viagens podem ser filtradas por status.
 - A consulta de viagem por `id` retorna `404` quando a viagem não existe.
-- A duração estimada da viagem é calculada por `totalDistance / speed` do drone associado.
+- A duração estimada da viagem é calculada por `(totalDistance / speed) * 60` do drone associado.
 - O tempo médio até entrega fica em `averageDeliveryTime`, calculado pela média dos tempos acumulados por pacote.
 - O início de uma viagem exige status `PLANNED` e drone `AVAILABLE`.
 - Ao iniciar uma viagem, viagem, drone e pedidos passam para `IN_ROUTE`.
@@ -1310,5 +1342,4 @@ Proximas etapas aprovadas para evolucao da aplicacao:
 - Avaliar estrategias de rota mais sofisticadas para viagens com muitos pedidos.
 - Avaliar autenticacao e autorizacao para endpoints internos.
 - Expandir o dashboard operacional com acoes de criacao, planejamento e transicao de viagens.
-- Gerar uma especificacao OpenAPI a partir do contrato documentado em `API.md`.
 - Atualizar a documentacao de decisoes conforme novas escolhas forem feitas.

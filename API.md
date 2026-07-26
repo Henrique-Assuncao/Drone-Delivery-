@@ -6,6 +6,19 @@ Base URL local:
 http://localhost:8080
 ```
 
+Interactive OpenAPI documentation:
+
+```text
+http://localhost:8080/swagger-ui.html
+```
+
+Machine-readable OpenAPI specification:
+
+```text
+http://localhost:8080/v3/api-docs
+http://localhost:8080/v3/api-docs.yaml
+```
+
 All responses are JSON. Error responses use:
 
 ```json
@@ -22,6 +35,20 @@ Common error rules:
 - Missing, invalid or expired client authorization tokens return HTTP `401`.
 - Duplicated resource identifiers return HTTP `409`.
 - Unknown resources return HTTP `404`.
+
+## Measurement Units
+
+The API uses metric units compatible with Brazilian operational conventions:
+
+- Weight, drone capacity and payload: kilograms (`kg`).
+- X/Y coordinates, distance, range and obstacle radius: kilometers (`km`).
+- Drone average speed: kilometers per hour (`km/h`).
+- Battery level and minimum return reserve: percent (`%`).
+- Battery consumption: percent per kilometer (`%/km`).
+- Charging rate: percent per minute (`%/min`).
+- Trip duration and delivery estimates: minutes (`min`).
+
+With these units, `estimatedDuration` is calculated as `(totalDistance / speed) * 60`, using `totalDistance` in km and `speed` in km/h.
 
 ## Enums
 
@@ -75,14 +102,14 @@ Request:
   "batteryLevel": 100.0,
   "batteryConsumptionPerDistanceUnit": 1.0,
   "minimumReturnBattery": 20.0,
-  "speed": 1.0,
+  "speed": 60.0,
   "chargingRate": 10.0
 }
 ```
 
-Battery fields are optional. When omitted, the defaults are `batteryLevel: 100.0`,
+Battery, speed and charging fields are optional. When omitted, the defaults are `batteryLevel: 100.0`,
 `batteryConsumptionPerDistanceUnit: 1.0`, `minimumReturnBattery: 20.0`,
-`speed: 1.0` and `chargingRate: 10.0`.
+`speed: 60.0` and `chargingRate: 10.0`.
 
 Success:
 
@@ -98,7 +125,7 @@ Success:
   "batteryLevel": 100.0,
   "batteryConsumptionPerDistanceUnit": 1.0,
   "minimumReturnBattery": 20.0,
-  "speed": 1.0,
+  "speed": 60.0,
   "chargingRate": 10.0
 }
 ```
@@ -143,7 +170,7 @@ Success:
     "batteryLevel": 100.0,
     "batteryConsumptionPerDistanceUnit": 1.0,
     "minimumReturnBattery": 20.0,
-    "speed": 1.0,
+    "speed": 60.0,
     "chargingRate": 10.0
   }
 ]
@@ -174,7 +201,7 @@ Success:
     "batteryLevel": 100.0,
     "batteryConsumptionPerDistanceUnit": 1.0,
     "minimumReturnBattery": 20.0,
-    "speed": 1.0,
+    "speed": 60.0,
     "chargingRate": 10.0
   }
 ]
@@ -200,7 +227,7 @@ Success:
   "batteryLevel": 100.0,
   "batteryConsumptionPerDistanceUnit": 1.0,
   "minimumReturnBattery": 20.0,
-  "speed": 1.0,
+  "speed": 60.0,
   "chargingRate": 10.0
 }
 ```
@@ -229,7 +256,7 @@ Success:
   "batteryLevel": 100.0,
   "batteryConsumptionPerDistanceUnit": 1.0,
   "minimumReturnBattery": 20.0,
-  "speed": 1.0,
+  "speed": 60.0,
   "chargingRate": 10.0
 }
 ```
@@ -259,7 +286,7 @@ Success:
   "batteryLevel": 100.0,
   "batteryConsumptionPerDistanceUnit": 1.0,
   "minimumReturnBattery": 20.0,
-  "speed": 1.0,
+  "speed": 60.0,
   "chargingRate": 10.0
 }
 ```
@@ -289,7 +316,7 @@ Success:
   "batteryLevel": 75.0,
   "batteryConsumptionPerDistanceUnit": 1.0,
   "minimumReturnBattery": 20.0,
-  "speed": 1.0,
+  "speed": 60.0,
   "chargingRate": 10.0,
   "rechargeQueuedAt": "2026-07-25T20:00:00Z",
   "rechargeReason": "manual recharge requested"
@@ -322,7 +349,7 @@ Success:
   "batteryLevel": 100.0,
   "batteryConsumptionPerDistanceUnit": 1.0,
   "minimumReturnBattery": 20.0,
-  "speed": 1.0,
+  "speed": 60.0,
   "chargingRate": 10.0
 }
 ```
@@ -357,7 +384,7 @@ Success:
   "batteryLevel": 100.0,
   "batteryConsumptionPerDistanceUnit": 1.0,
   "minimumReturnBattery": 20.0,
-  "speed": 1.0,
+  "speed": 60.0,
   "chargingRate": 10.0
 }
 ```
@@ -1145,7 +1172,7 @@ Success:
 }
 ```
 
-`estimatedDuration` is calculated as `totalDistance / speed` from the assigned drone.
+`estimatedDuration` is calculated as `(totalDistance / speed) * 60` from the assigned drone.
 `estimatedDeliveryTime` is cumulative from trip start to each route position, and `averageDeliveryTime` is the mean of those route-position times.
 When active obstacles affect the route, `totalDistance`, `estimatedDuration`, range and battery checks use the adjusted distance.
 

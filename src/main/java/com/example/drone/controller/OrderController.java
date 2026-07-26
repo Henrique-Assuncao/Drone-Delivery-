@@ -7,6 +7,8 @@ import com.example.drone.service.*;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,6 +24,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/orders")
+@Tag(name = "Pedidos Admin", description = "Cadastro, consulta, cancelamento e replanejamento de pedidos operacionais.")
 public class OrderController {
 
     private final OrderRegistrationService registrationService;
@@ -111,6 +114,7 @@ public class OrderController {
     public record CreateOrderRequest(
             String identifier,
             LocationRequest location,
+            @Schema(description = "Peso do pacote em quilogramas (kg).", example = "4.0")
             double weight,
             Priority priority,
             @JsonFormat(shape = JsonFormat.Shape.STRING)
@@ -129,7 +133,12 @@ public class OrderController {
         }
     }
 
-    public record LocationRequest(double x, double y) {
+    public record LocationRequest(
+            @Schema(description = "Coordenada X do endereço em quilômetros (km) a partir da base.", example = "3.0")
+            double x,
+            @Schema(description = "Coordenada Y do endereço em quilômetros (km) a partir da base.", example = "4.0")
+            double y
+    ) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -137,6 +146,7 @@ public class OrderController {
             Long id,
             String identifier,
             LocationResponse location,
+            @Schema(description = "Peso do pacote em quilogramas (kg).", example = "4.0")
             double weight,
             Priority priority,
             OrderStatus status,
@@ -149,6 +159,11 @@ public class OrderController {
     ) {
     }
 
-    public record LocationResponse(double x, double y) {
+    public record LocationResponse(
+            @Schema(description = "Coordenada X do endereço em quilômetros (km) a partir da base.", example = "3.0")
+            double x,
+            @Schema(description = "Coordenada Y do endereço em quilômetros (km) a partir da base.", example = "4.0")
+            double y
+    ) {
     }
 }

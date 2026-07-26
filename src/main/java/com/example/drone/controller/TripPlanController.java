@@ -6,6 +6,8 @@ import com.example.drone.persistence.*;
 import com.example.drone.service.*;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -16,6 +18,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/trip-plans")
+@Tag(name = "Planejamento", description = "Criação de planos de viagem a partir de drones e pedidos persistidos.")
 public class TripPlanController {
 
     private final TripPlanningService planningService;
@@ -73,9 +76,11 @@ public class TripPlanController {
         );
     }
 
+    @Schema(name = "TripPlanResponse")
     public record TripPlanResponse(List<TripResponse> trips, List<UnallocatedOrderResponse> unallocatedOrders) {
     }
 
+    @Schema(name = "TripPlanTripResponse")
     public record TripResponse(
             Long id,
             Long droneId,
@@ -83,19 +88,25 @@ public class TripPlanController {
             List<Long> orders,
             List<Long> route,
             List<TripRouteProgressResponse> routeProgress,
+            @Schema(description = "Peso total dos pacotes na viagem em quilogramas (kg).", example = "9.0")
             double totalWeight,
+            @Schema(description = "Distância total planejada da viagem em quilômetros (km).", example = "20.0")
             double totalDistance,
+            @Schema(description = "Duração estimada da viagem em minutos (min).", example = "20.0")
             double estimatedDuration,
+            @Schema(description = "Tempo médio estimado de entrega em minutos (min).", example = "8.0")
             double averageDeliveryTime
     ) {
     }
 
+    @Schema(name = "TripPlanRouteProgressResponse")
     public record TripRouteProgressResponse(
             Long orderId,
             int routePosition,
             boolean delivered,
             @JsonFormat(shape = JsonFormat.Shape.STRING)
             Instant deliveredAt,
+            @Schema(description = "Tempo estimado até esta entrega em minutos (min).", example = "5.0")
             double estimatedDeliveryTime
     ) {
     }

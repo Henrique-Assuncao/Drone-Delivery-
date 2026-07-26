@@ -3,6 +3,7 @@ package com.example.drone.controller;
 import com.example.drone.exception.*;
 import com.example.drone.service.*;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/trips/{id}/simulation")
+@Tag(name = "Simulação", description = "Estado e avanço temporal da simulação de viagens.")
 public class TripSimulationController {
 
     private static final double DEFAULT_ELAPSED_MINUTES = 1.0;

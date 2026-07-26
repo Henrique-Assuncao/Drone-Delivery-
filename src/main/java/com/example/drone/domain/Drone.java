@@ -16,7 +16,7 @@ public record Drone(
     public static final double DEFAULT_BATTERY_LEVEL = 100.0;
     public static final double DEFAULT_BATTERY_CONSUMPTION_PER_DISTANCE_UNIT = 1.0;
     public static final double DEFAULT_MINIMUM_RETURN_BATTERY = 20.0;
-    public static final double DEFAULT_SPEED = 1.0;
+    public static final double DEFAULT_SPEED = 60.0;
     public static final double DEFAULT_CHARGING_RATE = 10.0;
 
     public Drone(String identifier, double maxWeightCapacity, double maxRange) {

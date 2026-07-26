@@ -6,6 +6,8 @@ import com.example.drone.persistence.*;
 import com.example.drone.service.*;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -15,6 +17,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/delivery-queue")
+@Tag(name = "Fila de Entrega", description = "Consulta da fila operacional de pedidos aguardando planejamento.")
 public class DeliveryQueueController {
 
     private final OrderQueryService queryService;
@@ -47,6 +50,7 @@ public class DeliveryQueueController {
             Long orderId,
             String orderIdentifier,
             LocationResponse location,
+            @Schema(description = "Peso do pacote em quilogramas (kg).", example = "4.0")
             double weight,
             Priority priority,
             OrderStatus status,
@@ -57,6 +61,11 @@ public class DeliveryQueueController {
     ) {
     }
 
-    public record LocationResponse(double x, double y) {
+    public record LocationResponse(
+            @Schema(description = "Coordenada X do endereço em quilômetros (km) a partir da base.", example = "3.0")
+            double x,
+            @Schema(description = "Coordenada Y do endereço em quilômetros (km) a partir da base.", example = "4.0")
+            double y
+    ) {
     }
 }

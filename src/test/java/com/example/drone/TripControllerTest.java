@@ -64,7 +64,7 @@ class TripControllerTest {
                 100.0,
                 1.0,
                 20.0,
-                2.0,
+                120.0,
                 10.0
         );
         OrderEntity firstOrder = new OrderEntity(1L, "ORDER-1", 3.0, 4.0, 4.0, Priority.HIGH, OrderStatus.ALLOCATED);

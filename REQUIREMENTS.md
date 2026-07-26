@@ -6,6 +6,18 @@ Simular entregas feitas por drones em uma cidade representada por coordenadas 2D
 
 A evolução operacional aprovada deve transformar a aplicação em um sistema capaz de persistir dados e acompanhar o ciclo de vida de drones, pedidos e viagens.
 
+## Unidades de medida
+
+- Peso, capacidade e carga devem usar quilogramas (`kg`).
+- Coordenadas X/Y, distância, alcance e raio de obstáculos devem usar quilômetros (`km`).
+- Velocidade média dos drones deve usar quilômetros por hora (`km/h`).
+- Bateria e reserva mínima devem usar percentual (`%`).
+- Consumo de bateria deve usar percentual por quilômetro (`%/km`).
+- Taxa de recarga deve usar percentual por minuto (`%/min`).
+- Duração e estimativas de entrega devem usar minutos (`min`).
+
+Com essas unidades, a duração estimada deve ser calculada por `(totalDistance / speed) * 60`, considerando `totalDistance` em km e `speed` em km/h.
+
 ## Requisitos obrigatórios
 
 - A cidade deve ser representada por coordenadas 2D.
@@ -157,7 +169,7 @@ O roteiro atual aprovou a evolução de bateria, recarga, cálculo de tempo, obs
   - `GET /api/recharge-queue`.
 - Ao cadastrar um drone pela API operacional, o status inicial deve ser `AVAILABLE`.
 - Ao cadastrar um drone pela API operacional, campos básicos de bateria podem ser informados.
-- Quando os campos de bateria não forem informados no cadastro, devem ser usados valores padrão.
+- Quando os campos operacionais de bateria, velocidade e recarga não forem informados no cadastro, devem ser usados valores padrão.
 - Campos de bateria inválidos devem retornar HTTP `400` com mensagem clara.
 - O endpoint `POST /api/drones` deve retornar HTTP `201 Created` quando o cadastro for realizado.
 - O identificador do drone deve ser único.
@@ -240,7 +252,7 @@ Esta seção registra o roteiro aprovado e o estado implementado.
 ### Regras planejadas
 
 - Cada drone possui nível de bateria operacional.
-- Cada drone possui consumo estimado de bateria por unidade de distância.
+- Cada drone possui consumo estimado de bateria em percentual por quilômetro.
 - Cada drone possui reserva mínima de segurança para retorno à base.
 - Cada drone possui velocidade média para estimativa de tempo.
 - Uma viagem só pode ser planejada ou iniciada quando a bateria prevista for suficiente para cumprir a rota completa e retornar com a reserva mínima de segurança.
@@ -262,16 +274,16 @@ Esta seção registra o roteiro aprovado e o estado implementado.
 Drone:
 
 - `batteryLevel`: percentual atual de bateria.
-- `batteryConsumptionPerDistanceUnit`: consumo estimado por unidade de distância.
+- `batteryConsumptionPerDistanceUnit`: consumo estimado em percentual por quilômetro (`%/km`).
 - `minimumReturnBattery`: percentual mínimo reservado para retorno seguro.
-- `speed`: velocidade média usada no cálculo de tempo.
-- `chargingRate`: taxa estimada de recarga.
+- `speed`: velocidade média em quilômetros por hora (`km/h`) usada no cálculo de tempo.
+- `chargingRate`: taxa estimada de recarga em percentual por minuto (`%/min`).
 
 ### Campos de viagem implementados
 
 Viagem:
 
-- `estimatedDuration`: duração estimada calculada por `totalDistance / speed` do drone associado.
+- `estimatedDuration`: duração estimada calculada por `(totalDistance / speed) * 60` do drone associado.
 - `averageDeliveryTime`: média dos tempos acumulados até cada entrega da rota.
 
 Item da rota:
@@ -360,7 +372,7 @@ Entrada:
   "batteryLevel": 100.0,
   "batteryConsumptionPerDistanceUnit": 1.0,
   "minimumReturnBattery": 20.0,
-  "speed": 1.0,
+  "speed": 60.0,
   "chargingRate": 10.0
 }
 ```
@@ -377,12 +389,12 @@ Saída:
   "batteryLevel": 100.0,
   "batteryConsumptionPerDistanceUnit": 1.0,
   "minimumReturnBattery": 20.0,
-  "speed": 1.0,
+  "speed": 60.0,
   "chargingRate": 10.0
 }
 ```
 
-Os campos de bateria são opcionais no cadastro.
+Os campos operacionais de bateria, velocidade e recarga são opcionais no cadastro.
 
 `GET /api/drones` deve listar todos os drones em ordem crescente de `id`.
 
@@ -404,7 +416,7 @@ Saída:
   "batteryLevel": 100.0,
   "batteryConsumptionPerDistanceUnit": 1.0,
   "minimumReturnBattery": 20.0,
-  "speed": 1.0,
+  "speed": 60.0,
   "chargingRate": 10.0
 }
 ```
@@ -445,7 +457,7 @@ Saída:
   "batteryLevel": 100.0,
   "batteryConsumptionPerDistanceUnit": 1.0,
   "minimumReturnBattery": 20.0,
-  "speed": 1.0,
+  "speed": 60.0,
   "chargingRate": 10.0
 }
 ```
@@ -469,7 +481,7 @@ Saída:
   "batteryLevel": 100.0,
   "batteryConsumptionPerDistanceUnit": 1.0,
   "minimumReturnBattery": 20.0,
-  "speed": 1.0,
+  "speed": 60.0,
   "chargingRate": 10.0
 }
 ```
@@ -793,8 +805,8 @@ Erros esperados:
 - O endpoint `POST /api/drones` retorna HTTP `201 Created` para cadastro válido.
 - O endpoint `POST /api/drones` retorna HTTP `409 Conflict` para identificador duplicado.
 - O endpoint `POST /api/drones` aceita campos opcionais de bateria.
-- O endpoint `POST /api/drones` aplica valores padrão quando campos de bateria não são informados.
-- O endpoint `POST /api/drones` rejeita campos de bateria inválidos com HTTP `400`.
+- O endpoint `POST /api/drones` aplica valores padrão quando campos operacionais de bateria, velocidade e recarga não são informados.
+- O endpoint `POST /api/drones` rejeita campos operacionais inválidos de bateria, velocidade e recarga com HTTP `400`.
 - O endpoint `GET /api/drones` retorna todos os drones cadastrados em ordem crescente de `id`.
 - O endpoint `GET /api/drones?status=UNAVAILABLE` retorna somente drones com status `UNAVAILABLE` em ordem crescente de `id`.
 - Um filtro de status de drone inválido retorna HTTP `400` com os valores aceitos.
@@ -841,7 +853,7 @@ Erros esperados:
 - O endpoint `POST /api/trip-plans` só cria viagens quando a bateria do drone cobre a rota completa e a reserva mínima de retorno.
 - O endpoint `POST /api/trip-plans` move para `CHARGING` drones disponíveis sem bateria suficiente para pedidos que eles poderiam atender por peso e alcance.
 - O endpoint `POST /api/trip-plans` persiste viagens planejadas com status `PLANNED`.
-- O endpoint `POST /api/trip-plans` retorna `estimatedDuration` calculado por `totalDistance / speed` do drone.
+- O endpoint `POST /api/trip-plans` retorna `estimatedDuration` calculado por `(totalDistance / speed) * 60` do drone.
 - O endpoint `POST /api/trip-plans` retorna `averageDeliveryTime` calculado pela média dos tempos acumulados de entrega.
 - O endpoint `POST /api/trip-plans` retorna `estimatedDeliveryTime` por posição da rota.
 - O endpoint `POST /api/trip-plans` usa `optimizeRoute=true` por padrão.

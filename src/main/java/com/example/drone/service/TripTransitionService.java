@@ -308,7 +308,10 @@ public class TripTransitionService {
     }
 
     private boolean hasReachedRoutePosition(TripEntity trip, TripOrderEntity routeOrder) {
-        double deliveryDistance = routeOrder.getEstimatedDeliveryTime() * trip.getDrone().getSpeed();
+        double deliveryDistance = MeasurementUnits.distanceForMinutes(
+                routeOrder.getEstimatedDeliveryTime(),
+                trip.getDrone().getSpeed()
+        );
         return trip.getSimulationTravelledDistance() + 1.0E-9 >= deliveryDistance;
     }
 

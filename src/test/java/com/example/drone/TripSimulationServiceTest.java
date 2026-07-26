@@ -147,7 +147,7 @@ class TripSimulationServiceTest {
                 100.0,
                 1.0,
                 20.0,
-                10.0,
+                600.0,
                 10.0
         );
         OrderEntity order = new OrderEntity(1L, "ORDER-1", 10.0, 0.0, 4.0, Priority.HIGH, OrderStatus.ALLOCATED);
@@ -167,7 +167,7 @@ class TripSimulationServiceTest {
                 100.0,
                 1.0,
                 20.0,
-                10.0,
+                600.0,
                 10.0
         );
         OrderEntity firstOrder = new OrderEntity(1L, "ORDER-1", 10.0, 0.0, 4.0, Priority.HIGH, OrderStatus.IN_ROUTE);
