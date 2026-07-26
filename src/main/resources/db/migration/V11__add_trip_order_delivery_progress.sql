@@ -1,0 +1,2 @@
+ALTER TABLE trip_orders
+    ADD COLUMN delivered_at TIMESTAMP WITH TIME ZONE;

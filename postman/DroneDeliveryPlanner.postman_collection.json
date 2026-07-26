@@ -1,0 +1,1786 @@
+{
+  "info": {
+    "_postman_id": "2a83f894-b70f-4a6a-970e-0e7f4b3e2a0f",
+    "name": "Drone Delivery Planner",
+    "description": "Manual tests for the Drone Delivery Planner REST API.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Create drone",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"identifier\": \"DRONE-{{$guid}}\",\n  \"maxWeightCapacity\": 10.0,\n  \"maxRange\": 20.0,\n  \"batteryLevel\": 100.0,\n  \"batteryConsumptionPerDistanceUnit\": 1.0,\n  \"minimumReturnBattery\": 20.0,\n  \"speed\": 1.0,\n  \"chargingRate\": 10.0\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/drones",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "drones"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 201\", function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "",
+              "pm.test(\"creates an available drone\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.id).to.exist;",
+              "  pm.expect(response.identifier).to.match(/^DRONE-/);",
+              "  pm.expect(response.maxWeightCapacity).to.eql(10.0);",
+              "  pm.expect(response.maxRange).to.eql(20.0);",
+              "  pm.expect(response.status).to.eql(\"AVAILABLE\");",
+              "  pm.expect(response.batteryLevel).to.eql(100.0);",
+              "  pm.expect(response.batteryConsumptionPerDistanceUnit).to.eql(1.0);",
+              "  pm.expect(response.minimumReturnBattery).to.eql(20.0);",
+              "  pm.expect(response.speed).to.eql(1.0);",
+              "  pm.expect(response.chargingRate).to.eql(10.0);",
+              "  pm.collectionVariables.set(\"droneId\", response.id);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get created drone by ID",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/drones/{{droneId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "drones",
+            "{{droneId}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"returns the created drone\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.id).to.eql(Number(pm.collectionVariables.get(\"droneId\")));",
+              "  pm.expect(response.identifier).to.match(/^DRONE-/);",
+              "  pm.expect(response.status).to.eql(\"AVAILABLE\");",
+              "  pm.expect(response.batteryLevel).to.eql(100.0);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get created drone battery",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/internal/drones/{{droneId}}/battery",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "internal",
+            "drones",
+            "{{droneId}}",
+            "battery"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"returns the created drone battery\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.id).to.eql(Number(pm.collectionVariables.get(\"droneId\")));",
+              "  pm.expect(response.identifier).to.match(/^DRONE-/);",
+              "  pm.expect(response.status).to.eql(\"AVAILABLE\");",
+              "  pm.expect(response.batteryLevel).to.eql(100.0);",
+              "  pm.expect(response.batteryConsumptionPerDistanceUnit).to.eql(1.0);",
+              "  pm.expect(response.minimumReturnBattery).to.eql(20.0);",
+              "  pm.expect(response.chargingRate).to.eql(10.0);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create low battery drone for recharge",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"identifier\": \"DRONE-RECHARGE-{{$guid}}\",\n  \"maxWeightCapacity\": 10.0,\n  \"maxRange\": 20.0,\n  \"batteryLevel\": 75.0\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/drones",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "drones"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 201\", function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "",
+              "pm.test(\"creates a low battery drone\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.status).to.eql(\"AVAILABLE\");",
+              "  pm.expect(response.batteryLevel).to.eql(75.0);",
+              "  pm.collectionVariables.set(\"rechargeDroneId\", response.id);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Enqueue low battery drone for recharge",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/drones/{{rechargeDroneId}}/recharge",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "drones",
+            "{{rechargeDroneId}}",
+            "recharge"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"queues the drone for recharge\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.id).to.eql(Number(pm.collectionVariables.get(\"rechargeDroneId\")));",
+              "  pm.expect(response.status).to.eql(\"CHARGING\");",
+              "  pm.expect(response.rechargeQueuedAt).to.exist;",
+              "  pm.expect(response.rechargeReason).to.eql(\"manual recharge requested\");",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List recharge queue",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/recharge-queue",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "recharge-queue"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"contains the queued drone\", function () {",
+              "  const response = pm.response.json();",
+              "  const queued = response.find((entry) => entry.droneId === Number(pm.collectionVariables.get(\"rechargeDroneId\")));",
+              "  pm.expect(queued).to.exist;",
+              "  pm.expect(queued.status).to.eql(\"CHARGING\");",
+              "  pm.expect(queued.reason).to.eql(\"manual recharge requested\");",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Complete low battery drone recharge",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/drones/{{rechargeDroneId}}/recharge/complete",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "drones",
+            "{{rechargeDroneId}}",
+            "recharge",
+            "complete"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"completes the recharge\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.id).to.eql(Number(pm.collectionVariables.get(\"rechargeDroneId\")));",
+              "  pm.expect(response.status).to.eql(\"AVAILABLE\");",
+              "  pm.expect(response.batteryLevel).to.eql(100.0);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Mark created drone unavailable",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/drones/{{droneId}}/unavailable",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "drones",
+            "{{droneId}}",
+            "unavailable"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"marks the drone as unavailable\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.id).to.eql(Number(pm.collectionVariables.get(\"droneId\")));",
+              "  pm.expect(response.status).to.eql(\"UNAVAILABLE\");",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Mark created drone available",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/drones/{{droneId}}/available",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "drones",
+            "{{droneId}}",
+            "available"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"marks the drone as available\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.id).to.eql(Number(pm.collectionVariables.get(\"droneId\")));",
+              "  pm.expect(response.status).to.eql(\"AVAILABLE\");",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create order",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"identifier\": \"ORDER-{{$guid}}\",\n  \"location\": {\n    \"x\": 3.0,\n    \"y\": 4.0\n  },\n  \"weight\": 4.0,\n  \"priority\": \"HIGH\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/orders",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "orders"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 201\", function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "",
+              "pm.test(\"creates a requested order\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.id).to.exist;",
+              "  pm.expect(response.identifier).to.match(/^ORDER-/);",
+              "  pm.expect(response.location.x).to.eql(3.0);",
+              "  pm.expect(response.location.y).to.eql(4.0);",
+              "  pm.expect(response.weight).to.eql(4.0);",
+              "  pm.expect(response.priority).to.eql(\"HIGH\");",
+              "  pm.expect(response.status).to.eql(\"REQUESTED\");",
+              "  pm.expect(response.queuedAt).to.exist;",
+              "  pm.collectionVariables.set(\"orderId\", response.id);",
+              "  pm.collectionVariables.set(\"orderIdentifier\", response.identifier);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get created order by ID",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/orders/{{orderId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "orders",
+            "{{orderId}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"returns the created order\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.id).to.eql(Number(pm.collectionVariables.get(\"orderId\")));",
+              "  pm.expect(response.identifier).to.match(/^ORDER-/);",
+              "  pm.expect(response.location.x).to.eql(3.0);",
+              "  pm.expect(response.location.y).to.eql(4.0);",
+              "  pm.expect(response.status).to.eql(\"REQUESTED\");",
+              "  pm.expect(response.queuedAt).to.exist;",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List delivery queue",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/delivery-queue",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "delivery-queue"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"returns requested orders in queue shape\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response).to.be.an(\"array\");",
+              "  response.forEach(function (order) {",
+              "    pm.expect(order.orderId).to.exist;",
+              "    pm.expect(order.orderIdentifier).to.exist;",
+              "    pm.expect(order.location.x).to.be.a(\"number\");",
+              "    pm.expect(order.location.y).to.be.a(\"number\");",
+              "    pm.expect(order.weight).to.be.a(\"number\");",
+              "    pm.expect(order.priority).to.exist;",
+              "    pm.expect(order.status).to.eql(\"REQUESTED\");",
+              "    pm.expect(order.queuedAt).to.exist;",
+              "  });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create review",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"stars\": 5,\n  \"title\": \"Entrega excelente\",\n  \"feedback\": \"O pedido chegou antes do previsto.\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/reviews",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reviews"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 201\", function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "",
+              "pm.test(\"creates a service review\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.id).to.exist;",
+              "  pm.expect(response.stars).to.eql(5);",
+              "  pm.expect(response.title).to.eql(\"Entrega excelente\");",
+              "  pm.expect(response.feedback).to.eql(\"O pedido chegou antes do previsto.\");",
+              "  pm.expect(response.reviewedAt).to.exist;",
+              "  pm.collectionVariables.set(\"reviewId\", response.id);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get created review by ID",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/reviews/{{reviewId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reviews",
+            "{{reviewId}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"returns the created review\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.id).to.eql(Number(pm.collectionVariables.get(\"reviewId\")));",
+              "  pm.expect(response.stars).to.eql(5);",
+              "  pm.expect(response.title).to.eql(\"Entrega excelente\");",
+              "  pm.expect(response.feedback).to.eql(\"O pedido chegou antes do previsto.\");",
+              "  pm.expect(response.reviewedAt).to.exist;",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List reviews",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/reviews",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "reviews"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"returns service reviews\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response).to.be.an(\"array\");",
+              "  response.forEach(function (review) {",
+              "    pm.expect(review.id).to.exist;",
+              "    pm.expect(review.stars).to.be.within(1, 5);",
+              "    pm.expect(review.title).to.be.a(\"string\");",
+              "    pm.expect(review.feedback).to.be.a(\"string\");",
+              "    pm.expect(review.reviewedAt).to.exist;",
+              "  });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create obstacle",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"center\": {\n    \"x\": 50.0,\n    \"y\": 50.0\n  },\n  \"radius\": 1.0\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/obstacles",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "obstacles"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 201\", function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "",
+              "pm.test(\"creates an active obstacle\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.id).to.exist;",
+              "  pm.expect(response.center.x).to.eql(50.0);",
+              "  pm.expect(response.center.y).to.eql(50.0);",
+              "  pm.expect(response.radius).to.eql(1.0);",
+              "  pm.expect(response.active).to.eql(true);",
+              "  pm.collectionVariables.set(\"obstacleId\", response.id);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List obstacles",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/obstacles",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "obstacles"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"returns obstacles\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response).to.be.an(\"array\");",
+              "  response.forEach(function (obstacle) {",
+              "    pm.expect(obstacle.id).to.exist;",
+              "    pm.expect(obstacle.center.x).to.be.a(\"number\");",
+              "    pm.expect(obstacle.center.y).to.be.a(\"number\");",
+              "    pm.expect(obstacle.radius).to.be.a(\"number\");",
+              "    pm.expect(obstacle.active).to.be.a(\"boolean\");",
+              "  });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Deactivate obstacle",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/obstacles/{{obstacleId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "obstacles",
+            "{{obstacleId}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"deactivates the obstacle\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.id).to.eql(Number(pm.collectionVariables.get(\"obstacleId\")));",
+              "  pm.expect(response.active).to.eql(false);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Invalid input - duplicated order identifier",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"identifier\": \"{{orderIdentifier}}\",\n  \"location\": {\n    \"x\": 3.0,\n    \"y\": 4.0\n  },\n  \"weight\": 4.0,\n  \"priority\": \"HIGH\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/orders",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "orders"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 409\", function () {",
+              "  pm.response.to.have.status(409);",
+              "});",
+              "",
+              "pm.test(\"returns duplicated identifier message\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.message).to.eql(\"order identifier already exists\");",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Plan trips from saved data",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/trip-plans",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "trip-plans"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"returns persisted trip plan shape\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.trips).to.be.an(\"array\");",
+              "  pm.expect(response.unallocatedOrders).to.be.an(\"array\");",
+              "  response.trips.forEach(function (trip) {",
+              "    pm.expect(trip.id).to.exist;",
+              "    pm.expect(trip.droneId).to.exist;",
+              "    pm.expect(trip.status).to.eql(\"PLANNED\");",
+              "    pm.expect(trip.orders).to.be.an(\"array\");",
+              "    pm.expect(trip.route).to.be.an(\"array\");",
+              "    pm.expect(trip.totalWeight).to.be.a(\"number\");",
+              "    pm.expect(trip.totalDistance).to.be.a(\"number\");",
+              "    pm.expect(trip.estimatedDuration).to.be.a(\"number\");",
+              "    pm.expect(trip.averageDeliveryTime).to.be.a(\"number\");",
+              "    pm.expect(trip.routeProgress).to.be.an(\"array\");",
+              "    if (trip.routeProgress.length > 0) {",
+              "      pm.expect(trip.routeProgress[0].estimatedDeliveryTime).to.be.a(\"number\");",
+              "    }",
+              "  });",
+              "  if (response.trips.length > 0) {",
+              "    pm.collectionVariables.set(\"plannedTripId\", response.trips[0].id);",
+              "  }",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Invalid input - invalid optimizeRoute",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/trip-plans?optimizeRoute=maybe",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "trip-plans"
+          ],
+          "query": [
+            {
+              "key": "optimizeRoute",
+              "value": "maybe"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 400\", function () {",
+              "  pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test(\"returns invalid optimizeRoute message\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.message).to.eql(\"optimizeRoute is invalid\");",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get planned trip by ID",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/trips/{{plannedTripId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "trips",
+            "{{plannedTripId}}"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"returns the planned trip\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.id).to.eql(Number(pm.collectionVariables.get(\"plannedTripId\")));",
+              "  pm.expect(response.status).to.eql(\"PLANNED\");",
+              "  pm.expect(response.droneId).to.exist;",
+              "  pm.expect(response.orders).to.be.an(\"array\");",
+              "  pm.expect(response.route).to.be.an(\"array\");",
+              "  pm.expect(response.routeProgress).to.be.an(\"array\");",
+              "  pm.expect(response.estimatedDuration).to.be.a(\"number\");",
+              "  pm.expect(response.averageDeliveryTime).to.be.a(\"number\");",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Start planned trip",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/trips/{{plannedTripId}}/start",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "trips",
+            "{{plannedTripId}}",
+            "start"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"starts the trip\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.id).to.eql(Number(pm.collectionVariables.get(\"plannedTripId\")));",
+              "  pm.expect(response.status).to.eql(\"IN_ROUTE\");",
+              "  pm.expect(response.droneId).to.exist;",
+              "  pm.expect(response.orders).to.be.an(\"array\");",
+              "  pm.expect(response.route).to.be.an(\"array\");",
+              "  pm.expect(response.routeProgress).to.be.an(\"array\");",
+              "  pm.expect(response.estimatedDuration).to.be.a(\"number\");",
+              "  pm.expect(response.averageDeliveryTime).to.be.a(\"number\");",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Report first route delivery",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/trips/{{plannedTripId}}/route/0/deliver",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "trips",
+            "{{plannedTripId}}",
+            "route",
+            "0",
+            "deliver"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"reports first route delivery\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.id).to.eql(Number(pm.collectionVariables.get(\"plannedTripId\")));",
+              "  pm.expect(response.status).to.eql(\"IN_ROUTE\");",
+              "  pm.expect(response.routeProgress).to.be.an(\"array\");",
+              "  pm.expect(response.routeProgress[0].routePosition).to.eql(0);",
+              "  pm.expect(response.routeProgress[0].delivered).to.eql(true);",
+              "  pm.expect(response.routeProgress[0].deliveredAt).to.exist;",
+              "  pm.expect(response.routeProgress[0].estimatedDeliveryTime).to.be.a(\"number\");",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Report trip telemetry",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"batteryLevel\": 90.0\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/trips/{{plannedTripId}}/telemetry",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "trips",
+            "{{plannedTripId}}",
+            "telemetry"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"keeps the trip in route\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.id).to.eql(Number(pm.collectionVariables.get(\"plannedTripId\")));",
+              "  pm.expect(response.status).to.eql(\"IN_ROUTE\");",
+              "  pm.expect(response.estimatedDuration).to.be.a(\"number\");",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List trip telemetry",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/trips/{{plannedTripId}}/telemetry",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "trips",
+            "{{plannedTripId}}",
+            "telemetry"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"returns telemetry history\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response).to.be.an(\"array\");",
+              "  pm.expect(response.length).to.be.greaterThan(0);",
+              "  pm.expect(response[0].tripId).to.eql(Number(pm.collectionVariables.get(\"plannedTripId\")));",
+              "  pm.expect(response[0].batteryLevel).to.be.a(\"number\");",
+              "  pm.expect(response[0].reportedAt).to.exist;",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Complete started trip",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/trips/{{plannedTripId}}/complete",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "trips",
+            "{{plannedTripId}}",
+            "complete"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"completes the trip\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.id).to.eql(Number(pm.collectionVariables.get(\"plannedTripId\")));",
+              "  pm.expect(response.status).to.eql(\"COMPLETED\");",
+              "  pm.expect(response.droneId).to.exist;",
+              "  pm.expect(response.orders).to.be.an(\"array\");",
+              "  pm.expect(response.route).to.be.an(\"array\");",
+              "  pm.expect(response.estimatedDuration).to.be.a(\"number\");",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create order for cancellation",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"identifier\": \"ORDER-CANCEL-{{$guid}}\",\n  \"location\": {\n    \"x\": 1.0,\n    \"y\": 1.0\n  },\n  \"weight\": 1.0,\n  \"priority\": \"MEDIUM\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/orders",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "orders"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 201\", function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "",
+              "pm.test(\"creates a requested order for cancellation\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.id).to.exist;",
+              "  pm.expect(response.identifier).to.match(/^ORDER-CANCEL-/);",
+              "  pm.expect(response.status).to.eql(\"REQUESTED\");",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Plan trip for cancellation",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/trip-plans",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "trip-plans"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"returns a planned trip to cancel\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.trips).to.be.an(\"array\").that.is.not.empty;",
+              "  pm.expect(response.trips[0].status).to.eql(\"PLANNED\");",
+              "  pm.collectionVariables.set(\"cancelTripId\", response.trips[0].id);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cancel planned trip",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/trips/{{cancelTripId}}/cancel",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "trips",
+            "{{cancelTripId}}",
+            "cancel"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"cancels the trip\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.id).to.eql(Number(pm.collectionVariables.get(\"cancelTripId\")));",
+              "  pm.expect(response.status).to.eql(\"CANCELLED\");",
+              "  pm.expect(response.droneId).to.exist;",
+              "  pm.expect(response.orders).to.be.an(\"array\");",
+              "  pm.expect(response.route).to.be.an(\"array\");",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List trips",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/trips",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "trips"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"returns persisted trips\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response).to.be.an(\"array\");",
+              "  response.forEach(function (trip) {",
+              "    pm.expect(trip.id).to.exist;",
+              "    pm.expect(trip.droneId).to.exist;",
+              "    pm.expect(trip.status).to.exist;",
+              "    pm.expect(trip.orders).to.be.an(\"array\");",
+              "    pm.expect(trip.route).to.be.an(\"array\");",
+              "    pm.expect(trip.totalWeight).to.be.a(\"number\");",
+              "    pm.expect(trip.totalDistance).to.be.a(\"number\");",
+              "    pm.expect(trip.estimatedDuration).to.be.a(\"number\");",
+              "  });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List planned trips",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/trips?status=PLANNED",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "trips"
+          ],
+          "query": [
+            {
+              "key": "status",
+              "value": "PLANNED"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"returns only planned trips\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response).to.be.an(\"array\");",
+              "  response.forEach(function (trip) {",
+              "    pm.expect(trip.status).to.eql(\"PLANNED\");",
+              "  });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Invalid input - invalid trip status filter",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/trips?status=INVALID",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "trips"
+          ],
+          "query": [
+            {
+              "key": "status",
+              "value": "INVALID"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 400\", function () {",
+              "  pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test(\"returns accepted status values\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.message).to.eql(\"status must be one of PLANNED, IN_ROUTE, RETURNED_EARLY, COMPLETED, CANCELLED\");",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List drones",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/drones",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "drones"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"returns a drone list\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response).to.be.an(\"array\");",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List available drones",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/drones/available",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "drones",
+            "available"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"returns only available drones\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response).to.be.an(\"array\");",
+              "  response.forEach(function (drone) {",
+              "    pm.expect(drone.status).to.eql(\"AVAILABLE\");",
+              "  });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List unavailable drones",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/drones?status=UNAVAILABLE",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "drones"
+          ],
+          "query": [
+            {
+              "key": "status",
+              "value": "UNAVAILABLE"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"returns only unavailable drones\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response).to.be.an(\"array\");",
+              "  response.forEach(function (drone) {",
+              "    pm.expect(drone.status).to.eql(\"UNAVAILABLE\");",
+              "  });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Invalid input - invalid drone status filter",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/drones?status=INVALID",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "drones"
+          ],
+          "query": [
+            {
+              "key": "status",
+              "value": "INVALID"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 400\", function () {",
+              "  pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test(\"returns accepted status values\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.message).to.eql(\"status must be one of AVAILABLE, IN_ROUTE, UNAVAILABLE, CHARGING\");",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List orders",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/orders",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "orders"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"returns an order list\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response).to.be.an(\"array\");",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List requested orders",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/orders?status=REQUESTED",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "orders"
+          ],
+          "query": [
+            {
+              "key": "status",
+              "value": "REQUESTED"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"returns only requested orders\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response).to.be.an(\"array\");",
+              "  response.forEach(function (order) {",
+              "    pm.expect(order.status).to.eql(\"REQUESTED\");",
+              "  });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Invalid input - invalid order status filter",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/orders?status=INVALID",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "orders"
+          ],
+          "query": [
+            {
+              "key": "status",
+              "value": "INVALID"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"returns 400\", function () {",
+              "  pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test(\"returns accepted status values\", function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.message).to.eql(\"status must be one of REQUESTED, ALLOCATED, IN_ROUTE, PENDING_REASSIGNMENT, DELIVERED, CANCELLED, UNALLOCATED\");",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "droneId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "orderId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "orderIdentifier",
+      "value": "ORDER-1",
+      "type": "string"
+    },
+    {
+      "key": "plannedTripId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "cancelTripId",
+      "value": "1",
+      "type": "string"
+    }
+  ]
+}

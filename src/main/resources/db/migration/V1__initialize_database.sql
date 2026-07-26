@@ -1,0 +1,2 @@
+-- Initial Flyway migration.
+-- Domain tables will be added when persistence entities are implemented.
