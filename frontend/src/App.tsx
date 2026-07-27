@@ -60,6 +60,15 @@ import {
   registerClient,
   type DemoScenarioResult
 } from "./api";
+import {
+  formatDistance,
+  formatDuration,
+  formatLocation,
+  formatNumber,
+  formatSpeed,
+  formatWeight,
+  minutesForDistance
+} from "./formatters";
 import type {
   ClientAuthPayload,
   ClientRegisterPayload,
@@ -179,11 +188,6 @@ const mapRouteModeLabels: Record<MapRouteMode, string> = {
 };
 
 const tripRouteColors = ["#15616d", "#2b5c9e", "#a56013", "#257a4f", "#7a4f9a", "#aa2e25", "#3f6f73", "#7c5b2f"];
-const measurementUnits = {
-  weight: "kg",
-  distance: "km",
-  speed: "km/h"
-} as const;
 
 interface TripActionOptions {
   routePosition?: number;
@@ -360,8 +364,8 @@ const initialClientOrderForm: ClientOrderFormState = {
 
 const initialClientAuthForm: ClientAuthFormState = {
   name: "",
-  email: "",
-  password: ""
+  email: "cliente.demo@drone.local",
+  password: "senha123"
 };
 
 function App() {
@@ -941,7 +945,7 @@ function App() {
     } catch (exception) {
       setActionMessage({
         tone: "error",
-        text: operationErrorMessageFor(exception, "Falha ao carregar demo")
+        text: operationErrorMessageFor(exception, "Falha ao restaurar demo")
       });
     } finally {
       setDemoActionInFlight(false);
@@ -1258,14 +1262,14 @@ function App() {
                 type="button"
                 onClick={() => setDemoConfirmationOpen(true)}
                 disabled={actionBusy}
-                title="Limpa os dados operacionais atuais e recria o cenário demo após confirmação"
+                title="Restaura o cenário demonstrativo com exemplos para avaliação"
               >
                 {demoActionInFlight ? (
                   <RefreshCcw className="spinIcon" size={16} aria-hidden="true" />
                 ) : (
                   <ListChecks size={17} aria-hidden="true" />
                 )}
-                <span>Recriar demo</span>
+                <span>Restaurar demo</span>
               </button>
             ) : null}
             <button
@@ -1316,9 +1320,9 @@ function App() {
 
         {demoConfirmationOpen ? (
           <ConfirmationDialog
-            title="Recriar demo"
-            detail="Essa ação limpa os dados operacionais atuais e recria o cenário de simulação."
-            confirmLabel="Recriar demo"
+            title="Restaurar demo"
+            detail="Essa ação limpa os dados operacionais atuais e recria um cenário demonstrativo com exemplos para avaliação."
+            confirmLabel="Restaurar demo"
             cancelLabel="Cancelar"
             busy={demoActionInFlight}
             onCancel={() => setDemoConfirmationOpen(false)}
@@ -5405,7 +5409,7 @@ function tripPlanSuccessMessageFor(plan: TripPlan) {
 }
 
 function demoScenarioSuccessMessageFor(result: DemoScenarioResult) {
-  return `Demo recriada: ${result.drones} drones, ${result.orders} pedidos, ${result.obstacles} obstáculo, ${result.reviews} avaliação e ${result.trips} viagens planejadas.`;
+  return `Demo restaurada: ${result.drones} drones, ${result.orders} pedidos, ${result.unallocatedOrders} não alocados, ${result.obstacles} obstáculo, ${result.reviews} avaliações, ${result.clients} cliente e ${result.trips} viagens planejadas.`;
 }
 
 function countBy<T extends Record<K, string>, K extends keyof T>(items: T[], key: K) {
@@ -5425,53 +5429,6 @@ function average(values: number[]) {
   }
 
   return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function formatDuration(value: number) {
-  if (!Number.isFinite(value) || value <= 0) {
-    return "-";
-  }
-
-  if (value >= 60) {
-    const totalMinutes = Math.round(value);
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-
-    return `${hours.toString().padStart(2, "0")}:${minutes
-      .toString()
-      .padStart(2, "0")} h`;
-  }
-
-  return `${value.toFixed(1)} min`;
-}
-
-function formatNumber(value: number) {
-  return value.toLocaleString("pt-BR", {
-    maximumFractionDigits: 1
-  });
-}
-
-function formatWeight(value: number) {
-  return `${formatNumber(value)} ${measurementUnits.weight}`;
-}
-
-function formatDistance(value: number) {
-  const absoluteValue = Math.abs(value);
-  const maximumFractionDigits = absoluteValue > 0 && absoluteValue < 0.1 ? 3 : absoluteValue < 1 ? 2 : 1;
-
-  return `${value.toLocaleString("pt-BR", { maximumFractionDigits })} ${measurementUnits.distance}`;
-}
-
-function formatSpeed(value: number) {
-  return `${formatNumber(value)} ${measurementUnits.speed}`;
-}
-
-function formatLocation(x: number, y: number) {
-  return `${formatDistance(x)}, ${formatDistance(y)}`;
-}
-
-function minutesForDistance(distanceKilometers: number, speedKilometersPerHour: number) {
-  return speedKilometersPerHour > 0 ? (distanceKilometers / speedKilometersPerHour) * 60 : 0;
 }
 
 function formatDateTime(value: string) {

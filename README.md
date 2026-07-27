@@ -137,8 +137,19 @@ http://127.0.0.1:5173
 Durante o desenvolvimento, o Vite encaminha chamadas `/api` e `/internal` para a API Spring em `http://localhost:8080`.
 Endpoints internos sob `/internal` exigem o header `X-Internal-Api-Key`. O valor local padrao e `dev-internal-key`, configurado em `drone.internal.api-key`; no backend ele pode ser alterado com `DRONE_INTERNAL_API_KEY` e no dashboard com `VITE_INTERNAL_API_KEY`.
 
-O botao `Recriar demo` chama `POST /internal/demo/reset-and-seed?confirmation=RESET_DEMO_DATA`.
-Essa acao exige confirmacao no dashboard e limpa os dados operacionais atuais antes de recriar o cenario demo.
+Quando o banco esta vazio, a aplicacao cria automaticamente um cenario demo inicial para avaliacao, com drones,
+pedidos, viagem planejada, pedidos nao alocados, obstaculo, avaliacoes e cliente demo. Esse seed automatico pode ser
+desativado com `DRONE_DEMO_AUTO_SEED=false`.
+
+Credenciais do cliente demo:
+
+```text
+E-mail: cliente.demo@drone.local
+Senha: senha123
+```
+
+O botao `Restaurar demo` chama `POST /internal/demo/reset-and-seed?confirmation=RESET_DEMO_DATA`.
+Essa acao exige confirmacao no dashboard e limpa os dados operacionais atuais antes de recriar o cenario demo com exemplos.
 
 Depois de instalar as dependencias do frontend uma vez, tambem e possivel subir banco, backend e dashboard com um unico comando:
 
@@ -154,7 +165,7 @@ O dashboard atual possui:
 - visão geral com indicadores de drones, pedidos, viagens, recarga, tempo médio e avaliações;
 - relatório mensal de produtividade com alternância do mês exibido;
 - indicador de disponibilidade da API Spring, com bloqueio de ações operacionais quando o backend estiver offline;
-- botão para recriar um cenário demo com confirmação, limpando dados operacionais e gerando drones, pedidos, obstáculo, avaliação e planejamento otimizado;
+- cenário demo inicial quando o banco está vazio e botão para restaurar a demo com confirmação, limpando dados operacionais e gerando drones, cliente, pedidos, obstáculo, avaliações e planejamento otimizado;
 - alertas operacionais para reatribuição, não alocação, retorno antecipado e bateria baixa;
 - jornada operacional guiada do ciclo completo, do cadastro ao encerramento da viagem;
 - tabelas consultivas de drones, pedidos e viagens;
@@ -209,10 +220,18 @@ docker compose up -d
 mvn test
 ```
 
+Para executar os testes unitarios do dashboard:
+
+```sh
+cd frontend
+npm test
+```
+
 Resultado verificado:
 
 - `BUILD SUCCESS`
-- `Tests run: 218, Failures: 0, Errors: 0, Skipped: 0`
+- Backend: `Tests run: 237, Failures: 0, Errors: 0, Skipped: 0`
+- Frontend: `tests 5`, `pass 5`, `fail 0`
 
 ## Exemplo de entrada e saida
 

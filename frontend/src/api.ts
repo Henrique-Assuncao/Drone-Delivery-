@@ -27,6 +27,7 @@ export interface DemoScenarioResult {
   orders: number;
   obstacles: number;
   reviews: number;
+  clients: number;
   trips: number;
   unallocatedOrders: number;
 }

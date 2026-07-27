@@ -59,7 +59,7 @@ class OperationalFlowIntegrationTest {
 
     @BeforeEach
     void cleanDatabase() {
-        jdbcTemplate.execute("TRUNCATE TABLE monthly_drone_productivity_reports, monthly_productivity_reports, trip_telemetry, trip_orders, trips, obstacles, reviews, orders, drones RESTART IDENTITY CASCADE");
+        jdbcTemplate.execute("TRUNCATE TABLE monthly_drone_productivity_reports, monthly_productivity_reports, trip_telemetry, trip_orders, trips, obstacles, reviews, orders, client_users, drones RESTART IDENTITY CASCADE");
     }
 
     @AfterAll
@@ -228,22 +228,23 @@ class OperationalFlowIntegrationTest {
                         .header(InternalApiAuthenticationFilter.HEADER_NAME, INTERNAL_API_KEY)
                         .param("confirmation", InternalDemoController.RESET_CONFIRMATION))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.drones").value(3))
-                .andExpect(jsonPath("$.orders").value(5))
+                .andExpect(jsonPath("$.drones").value(4))
+                .andExpect(jsonPath("$.orders").value(6))
                 .andExpect(jsonPath("$.obstacles").value(1))
-                .andExpect(jsonPath("$.reviews").value(1))
+                .andExpect(jsonPath("$.reviews").value(2))
+                .andExpect(jsonPath("$.clients").value(1))
                 .andExpect(jsonPath("$.trips").value(greaterThan(0)))
-                .andExpect(jsonPath("$.unallocatedOrders").value(0));
+                .andExpect(jsonPath("$.unallocatedOrders").value(2));
 
         mockMvc.perform(get("/api/drones"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$.length()").value(4))
                 .andExpect(jsonPath("$[0].identifier").value("DEMO-ALFA"));
 
         mockMvc.perform(get("/api/orders"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(5))
-                .andExpect(jsonPath("$[0].identifier").value("DEMO-URGENTE"))
+                .andExpect(jsonPath("$.length()").value(6))
+                .andExpect(jsonPath("$[0].identifier").value("DEMO-CLIENTE"))
                 .andExpect(jsonPath("$[0].status").value("ALLOCATED"));
     }
 

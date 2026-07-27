@@ -42,6 +42,7 @@ class InternalDemoControllerTest {
                 .andExpect(jsonPath("$.orders").value(1))
                 .andExpect(jsonPath("$.obstacles").value(1))
                 .andExpect(jsonPath("$.reviews").value(1))
+                .andExpect(jsonPath("$.clients").value(1))
                 .andExpect(jsonPath("$.trips").value(1))
                 .andExpect(jsonPath("$.unallocatedOrders").value(0));
     }
@@ -65,7 +66,7 @@ class InternalDemoControllerTest {
     private static class FakeDemoDataService extends DemoDataService {
 
         FakeDemoDataService() {
-            super(null, null);
+            super(null, null, null);
         }
 
         @Override
@@ -74,13 +75,21 @@ class InternalDemoControllerTest {
             OrderEntity order = new OrderEntity(1L, "DEMO-ORDER", 3.0, 4.0, 4.0, Priority.HIGH, OrderStatus.ALLOCATED);
             ObstacleEntity obstacle = new ObstacleEntity(1L, 4.0, 2.0, 1.2, true);
             ReviewEntity review = new ReviewEntity(1L, 5, "Demo", "Feedback demo.");
+            ClientUserEntity clientUser = new ClientUserEntity(
+                    1L,
+                    "Cliente Demo",
+                    "cliente.demo@drone.local",
+                    "hash",
+                    java.time.Instant.now()
+            );
             TripEntity trip = new TripEntity(1L, drone, TripStatus.PLANNED, 4.0, 10.0);
 
             return new DemoScenario(
                     List.of(drone),
                     List.of(order),
                     List.of(obstacle),
-                    review,
+                    List.of(review),
+                    List.of(clientUser),
                     new PersistedTripPlan(List.of(trip), List.of())
             );
         }

@@ -461,7 +461,7 @@ Internal endpoints require the header `X-Internal-Api-Key`.
 POST /internal/demo/reset-and-seed?confirmation=RESET_DEMO_DATA
 ```
 
-This endpoint clears current operational data and recreates a deterministic demo scenario with drones, orders, one obstacle, one review and optimized trip planning.
+This endpoint clears current operational data and recreates a deterministic demo scenario with drones, orders, one obstacle, reviews, one demo client and optimized trip planning.
 
 Success:
 
@@ -469,12 +469,13 @@ Success:
 
 ```json
 {
-  "drones": 3,
-  "orders": 5,
+  "drones": 4,
+  "orders": 6,
   "obstacles": 1,
-  "reviews": 1,
+  "reviews": 2,
+  "clients": 1,
   "trips": 2,
-  "unallocatedOrders": 0
+  "unallocatedOrders": 2
 }
 ```
 

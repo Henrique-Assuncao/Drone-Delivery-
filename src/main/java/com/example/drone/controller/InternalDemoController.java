@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/internal/demo")
-@Tag(name = "Interno - Demo", description = "Reset e recriação de cenário de demonstração.")
+@Tag(name = "Interno - Demo", description = "Reset e recriação de cenário demonstrativo.")
 @SecurityRequirement(name = "internalApiKey")
 public class InternalDemoController {
 
@@ -36,7 +36,8 @@ public class InternalDemoController {
                 scenario.drones().size(),
                 scenario.orders().size(),
                 scenario.obstacles().size(),
-                1,
+                scenario.reviews().size(),
+                scenario.clientUsers().size(),
                 scenario.plan().trips().size(),
                 scenario.plan().unallocatedOrders().size()
         );
@@ -47,6 +48,7 @@ public class InternalDemoController {
             int orders,
             int obstacles,
             int reviews,
+            int clients,
             int trips,
             int unallocatedOrders
     ) {
