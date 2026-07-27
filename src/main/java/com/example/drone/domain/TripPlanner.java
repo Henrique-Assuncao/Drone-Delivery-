@@ -15,6 +15,8 @@ public class TripPlanner {
             "order exceeds drone battery for complete trip and safe return";
     private static final String WEIGHT_AND_RANGE_UNALLOCATED_REASON =
             "order exceeds max drone weight capacity and max drone range";
+    private static final String IMMEDIATE_DRONE_UNALLOCATED_REASON =
+            "order requires another drone but no immediate drone is available";
     private static final RouteDistanceCalculator DISTANCE_CALCULATOR = new RouteDistanceCalculator();
 
     public TripPlan plan(List<Drone> drones, List<Order> orders) {
@@ -26,11 +28,22 @@ public class TripPlanner {
     }
 
     public TripPlan plan(List<Drone> drones, List<Order> orders, boolean optimizeRoute, List<Obstacle> obstacles) {
+        return plan(drones, List.of(), orders, optimizeRoute, obstacles);
+    }
+
+    public TripPlan plan(
+            List<Drone> drones,
+            List<Trip> existingTrips,
+            List<Order> orders,
+            boolean optimizeRoute,
+            List<Obstacle> obstacles
+    ) {
         validateInput(drones, orders);
+        validateExistingTrips(existingTrips);
         List<Obstacle> copiedObstacles = copyOfObstacles(obstacles);
 
         List<Drone> sortedDrones = sortDrones(drones);
-        List<Trip> trips = new ArrayList<>();
+        List<Trip> trips = new ArrayList<>(existingTrips);
         List<UnallocatedOrder> unallocatedOrders = new ArrayList<>();
 
         if (!optimizeRoute) {
@@ -44,14 +57,19 @@ public class TripPlanner {
                 }
 
                 if (!addToExistingTrip(trips, order, false, copiedObstacles)) {
-                    trips.add(createTripWithFirstCapableDrone(sortedDrones, order, false, copiedObstacles));
+                    Trip newTrip = createTripWithFirstUnusedCapableDrone(sortedDrones, trips, order, false, copiedObstacles);
+                    if (newTrip == null) {
+                        unallocatedOrders.add(new UnallocatedOrder(order, IMMEDIATE_DRONE_UNALLOCATED_REASON));
+                    } else {
+                        trips.add(newTrip);
+                    }
                 }
             }
 
             return new TripPlan(trips, unallocatedOrders);
         }
 
-        for (Order order : DeliveryOrdering.orderByPriorityWeightAndDistance(orders, copiedObstacles)) {
+        for (Order order : DeliveryOrdering.orderByDeliveryTimePriorityWeightAndDistance(orders, copiedObstacles)) {
             if (!canBeServedByAnyDrone(sortedDrones, order, true, copiedObstacles)) {
                 unallocatedOrders.add(new UnallocatedOrder(
                         order,
@@ -61,11 +79,28 @@ public class TripPlanner {
             }
 
             if (!addToExistingTrip(trips, order, true, copiedObstacles)) {
-                trips.add(createTripWithFirstCapableDrone(sortedDrones, order, true, copiedObstacles));
+                Trip newTrip = createTripWithFirstUnusedCapableDrone(sortedDrones, trips, order, true, copiedObstacles);
+                if (newTrip == null) {
+                    unallocatedOrders.add(new UnallocatedOrder(order, IMMEDIATE_DRONE_UNALLOCATED_REASON));
+                } else {
+                    trips.add(newTrip);
+                }
             }
         }
 
         return new TripPlan(trips, unallocatedOrders);
+    }
+
+    private void validateExistingTrips(List<Trip> existingTrips) {
+        if (existingTrips == null) {
+            throw new InvalidInputException("existingTrips must not be null");
+        }
+
+        for (Trip trip : existingTrips) {
+            if (trip == null) {
+                throw new InvalidInputException("existingTrips must not contain null");
+            }
+        }
     }
 
     private void validateInput(List<Drone> drones, List<Order> orders) {
@@ -106,8 +141,8 @@ public class TripPlanner {
 
     private List<Drone> sortDrones(List<Drone> drones) {
         return drones.stream()
-                .sorted(Comparator.comparingDouble(Drone::maxWeightCapacity).reversed()
-                        .thenComparing(Comparator.comparingDouble(Drone::maxRange).reversed())
+                .sorted(Comparator.comparingDouble(Drone::maxWeightCapacity)
+                        .thenComparing(Comparator.comparingDouble(Drone::maxRange))
                         .thenComparing(Drone::identifier))
                 .toList();
     }
@@ -190,19 +225,29 @@ public class TripPlanner {
         return false;
     }
 
-    private Trip createTripWithFirstCapableDrone(
+    private Trip createTripWithFirstUnusedCapableDrone(
             List<Drone> drones,
+            List<Trip> trips,
             Order order,
             boolean optimizeRoute,
             List<Obstacle> obstacles
     ) {
         for (Drone drone : drones) {
+            if (hasPlannedTripForDrone(trips, drone)) {
+                continue;
+            }
+
             if (canCreateTrip(drone, List.of(order), optimizeRoute, obstacles)) {
                 return new Trip(drone, List.of(order), optimizeRoute, obstacles);
             }
         }
 
-        throw new IllegalArgumentException("order cannot be served by any drone");
+        return null;
+    }
+
+    private boolean hasPlannedTripForDrone(List<Trip> trips, Drone drone) {
+        return trips.stream()
+                .anyMatch(trip -> trip.drone().equals(drone));
     }
 
     private boolean canCreateTrip(Drone drone, List<Order> orders, boolean optimizeRoute, List<Obstacle> obstacles) {

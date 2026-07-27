@@ -40,11 +40,16 @@ public class TripTransitionService {
             throw new InvalidInputException("drone must be AVAILABLE to start trip");
         }
 
+        Instant now = Instant.now();
+        if (!TripDispatchPolicy.isDispatchWindowOpen(trip, now)) {
+            throw new InvalidInputException("trip must wait until ideal dispatch time");
+        }
+
         if (!canCompleteTripWithSafeReturn(trip.getDrone(), trip.getTotalDistance())) {
             throw new InvalidInputException("drone battery is insufficient for complete trip and safe return");
         }
 
-        trip.markStarted(Instant.now());
+        trip.markStarted(now);
         trip.changeStatus(TripStatus.IN_ROUTE);
         trip.getDrone().changeStatus(DroneStatus.IN_ROUTE);
 

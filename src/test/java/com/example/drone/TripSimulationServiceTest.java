@@ -46,6 +46,25 @@ class TripSimulationServiceTest {
     }
 
     @Test
+    void shouldKeepPlannedTripStoppedBeforeIdealDispatchTime() {
+        InMemoryTripStorage storage = new InMemoryTripStorage();
+        TripEntity trip = storage.save(futureOneOrderTrip());
+        TripSimulationService service = new TripSimulationService(storage);
+
+        TripSimulationState state = service.advance(trip.getId(), 1.0);
+
+        TripEntity updatedTrip = storage.findById(trip.getId()).orElseThrow();
+
+        assertEquals(TripStatus.PLANNED, updatedTrip.getStatus());
+        assertEquals(DroneStatus.AVAILABLE, updatedTrip.getDrone().getStatus());
+        assertEquals(OrderStatus.ALLOCATED, updatedTrip.getTripOrders().get(0).getOrder().getStatus());
+        assertEquals(0.0, state.travelledDistance());
+        assertEquals(0.0, state.progress());
+        assertFalse(state.moving());
+    }
+
+
+    @Test
     void shouldCompleteTripWhenDroneFinishesRoute() {
         InMemoryTripStorage storage = new InMemoryTripStorage();
         TripEntity trip = storage.save(oneOrderTrip(TripStatus.PLANNED));
@@ -152,6 +171,37 @@ class TripSimulationServiceTest {
         );
         OrderEntity order = new OrderEntity(1L, "ORDER-1", 10.0, 0.0, 4.0, Priority.HIGH, OrderStatus.ALLOCATED);
         TripEntity trip = new TripEntity(null, drone, status, 4.0, 20.0);
+        trip.addOrder(order, 0, null, 1.0);
+
+        return trip;
+    }
+
+    private TripEntity futureOneOrderTrip() {
+        DroneEntity drone = new DroneEntity(
+                1L,
+                "DRONE-1",
+                10.0,
+                30.0,
+                DroneStatus.AVAILABLE,
+                100.0,
+                1.0,
+                20.0,
+                600.0,
+                10.0
+        );
+        OrderEntity order = new OrderEntity(
+                1L,
+                "ORDER-1",
+                10.0,
+                0.0,
+                4.0,
+                Priority.HIGH,
+                OrderStatus.ALLOCATED,
+                Instant.now(),
+                "ORDER-1",
+                Instant.now().plusSeconds(3_600)
+        );
+        TripEntity trip = new TripEntity(null, drone, TripStatus.PLANNED, 4.0, 20.0);
         trip.addOrder(order, 0, null, 1.0);
 
         return trip;

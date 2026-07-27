@@ -2,7 +2,13 @@ package com.example.drone.domain;
 
 import com.example.drone.exception.*;
 
-public record Order(String identifier, Coordinate location, double weight, Priority priority) {
+import java.time.Instant;
+
+public record Order(String identifier, Coordinate location, double weight, Priority priority, Instant confirmedDeliveryTime) {
+
+    public Order(String identifier, Coordinate location, double weight, Priority priority) {
+        this(identifier, location, weight, priority, Instant.MAX);
+    }
 
     public Order {
         if (identifier == null || identifier.isBlank()) {
@@ -19,6 +25,10 @@ public record Order(String identifier, Coordinate location, double weight, Prior
 
         if (priority == null) {
             throw new InvalidInputException("priority must not be null");
+        }
+
+        if (confirmedDeliveryTime == null) {
+            throw new InvalidInputException("confirmedDeliveryTime must not be null");
         }
     }
 }

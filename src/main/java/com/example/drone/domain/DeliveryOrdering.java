@@ -13,9 +13,10 @@ final class DeliveryOrdering {
     private DeliveryOrdering() {
     }
 
-    static List<Order> orderByPriorityWeightAndDistance(List<Order> orders, List<Obstacle> obstacles) {
+    static List<Order> orderByDeliveryTimePriorityWeightAndDistance(List<Order> orders, List<Obstacle> obstacles) {
         return orders.stream()
-                .sorted(Comparator.comparingInt((Order order) -> priorityRank(order.priority())).reversed()
+                .sorted(Comparator.comparing(Order::confirmedDeliveryTime)
+                        .thenComparing(Comparator.comparingInt((Order order) -> priorityRank(order.priority())).reversed())
                         .thenComparing(Comparator.comparingDouble(Order::weight).reversed())
                         .thenComparingDouble(order -> distanceFromBase(order, obstacles))
                         .thenComparing(Order::identifier))

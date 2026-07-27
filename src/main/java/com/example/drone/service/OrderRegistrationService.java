@@ -43,6 +43,8 @@ public class OrderRegistrationService {
             throw new InvalidInputException("confirmedDeliveryTime must not be null");
         }
 
+        order = new Order(order.identifier(), order.location(), order.weight(), order.priority(), confirmedDeliveryTime);
+
         if (storage.existsByIdentifier(order.identifier())) {
             throw new DuplicateResourceException("order identifier already exists");
         }

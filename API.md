@@ -906,7 +906,7 @@ GET /api/delivery-queue
 Behavior:
 
 - Returns only orders with status `REQUESTED` or `PENDING_REASSIGNMENT`.
-- Orders are sorted by `queuedAt` and then by `id`.
+- Orders are sorted by `confirmedDeliveryTime`, priority, `queuedAt` and then by `id`.
 
 Success:
 
@@ -1129,11 +1129,18 @@ No body is required.
 Behavior:
 
 - Uses persisted drones with status `AVAILABLE`.
+- Reuses existing `PLANNED` trips before their ideal dispatch time when the recalculated route still respects weight, range, battery and active obstacles.
+- Excludes drones that already have `IN_ROUTE` trips or `PLANNED` trips whose ideal dispatch window is already open, even when the drone status is still `AVAILABLE`.
 - Uses persisted orders with status `REQUESTED` or `PENDING_REASSIGNMENT`.
 - Uses active circular obstacles to adjust route segment distances when a segment would cross an obstacle area.
 - Automatically moves available drones to the recharge queue when they have weight/range for requested orders but insufficient current battery for all of them.
-- With `optimizeRoute=true`, automatically orders deliveries by priority (`HIGH`, `MEDIUM`, `LOW`), higher weight, shorter distance from base, and then identifier.
-- With `optimizeRoute=false`, preserves the delivery queue order inside planned trips.
+- With `optimizeRoute=true`, automatically orders deliveries by confirmed delivery time, priority (`HIGH`, `MEDIUM`, `LOW`), higher weight, shorter distance from base, and then identifier.
+- With `optimizeRoute=false`, preserves the delivery queue order inside planned trips; the queue is ordered by confirmed delivery time, priority, queue entry time and then persisted ID.
+- Reserves each available drone for at most one planned trip in the current planning run.
+- Calculates `idealDispatchTime` as the earliest value of `confirmedDeliveryTime - estimatedDeliveryTime` across unresolved route orders.
+- Creates new trips with the smallest capable unused drone, preserving larger drones for heavier orders.
+- When an order no longer fits in an already planned trip, immediately tries another still-unused capable drone.
+- Marks the order as unallocated when it is individually serviceable but no immediate unused capable drone exists in the current planning run.
 - Requires each planned trip to leave enough battery for the full route and the drone's safe-return reserve.
 - Calculates `estimatedDeliveryTime` for each route position and `averageDeliveryTime` for the trip.
 - Creates persisted trips with status `PLANNED`.
@@ -1197,6 +1204,7 @@ Known unallocated reasons:
 - `Pedido excede o alcance máximo dos drones disponíveis.`
 - `Pedido excede a capacidade máxima de peso e o alcance máximo dos drones disponíveis.`
 - `Pedido exige mais bateria do que a frota disponível possui para concluir a rota e retornar em segurança.`
+- `Pedido exige outro drone imediato, mas não há drone disponível nesta rodada de planejamento.`
 - `Pedido não pode ser atendido por nenhum drone no planejamento atual.`
 
 Errors:
@@ -1320,6 +1328,7 @@ POST /api/trips/{id}/start
 Behavior:
 
 - Validates that current drone battery can cover the saved route and safe-return reserve.
+- Rejects the start while the planned trip is before `idealDispatchTime`.
 - Trip changes from `PLANNED` to `IN_ROUTE`.
 - Associated drone changes from `AVAILABLE` to `IN_ROUTE`.
 - Associated orders change to `IN_ROUTE`.
@@ -1354,6 +1363,7 @@ Errors:
 - HTTP `404`: `trip not found`
 - HTTP `400`: `trip must be PLANNED to start`
 - HTTP `400`: `drone must be AVAILABLE to start trip`
+- HTTP `400`: `trip must wait until ideal dispatch time`
 - HTTP `400`: `drone battery is insufficient for complete trip and safe return`
 
 ### Trip Simulation
@@ -1375,7 +1385,8 @@ Behavior:
 
 - `GET` returns the current persisted simulation state for the trip.
 - `POST /tick` advances a planned or in-route trip by the given simulated minutes.
-- When the first tick reaches a `PLANNED` trip, the trip starts automatically if the drone is `AVAILABLE` and battery is sufficient for the saved route plus safe-return reserve.
+- When the first tick reaches a `PLANNED` trip before `idealDispatchTime`, the trip remains stopped at the base.
+- When a tick reaches a `PLANNED` trip at or after `idealDispatchTime`, the trip starts automatically if the drone is `AVAILABLE` and battery is sufficient for the saved route plus safe-return reserve.
 - The simulation consumes battery by travelled distance, updates current drone position, requests customer availability when the drone enters the approach window, stops at reached route positions while waiting for customer confirmation, and completes the trip when the full route is finished after all route positions are resolved.
 - If the customer does not respond to the availability request before `availabilityResponseDeadline`, the trip changes to `RETURNED_EARLY`, the current package becomes `NOT_DELIVERED` with a Portuguese `statusReason`, remaining undelivered packages become `PENDING_REASSIGNMENT`, and the drone returns to base.
 - After availability is confirmed and the drone reaches the address, `deliveryConfirmationRequestedAt` starts a 1-minute window. If the customer does not enter the code before `deliveryConfirmationDeadline`, that package becomes `NOT_DELIVERED`, the route position is resolved as failed, and the drone continues the route carrying the package back to base.

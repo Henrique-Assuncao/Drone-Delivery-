@@ -6,6 +6,7 @@ import com.example.drone.exception.*;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Repository;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -45,14 +46,31 @@ public class JpaOrderStorage implements OrderStorage {
 
     @Override
     public List<OrderEntity> findDeliveryQueue() {
-        return repository.findByStatusInOrderByQueuedAtAscIdAsc(List.of(
+        return repository.findByStatusIn(List.of(
                 OrderStatus.REQUESTED,
                 OrderStatus.PENDING_REASSIGNMENT
-        ));
+        )).stream()
+                .sorted(deliveryQueueComparator())
+                .toList();
     }
 
     @Override
     public OrderEntity save(OrderEntity order) {
         return repository.save(order);
+    }
+
+    private Comparator<OrderEntity> deliveryQueueComparator() {
+        return Comparator.comparing(OrderEntity::getConfirmedDeliveryTime)
+                .thenComparing(Comparator.comparingInt((OrderEntity order) -> priorityRank(order.getPriority())).reversed())
+                .thenComparing(OrderEntity::getQueuedAt)
+                .thenComparing(OrderEntity::getId);
+    }
+
+    private int priorityRank(Priority priority) {
+        return switch (priority) {
+            case HIGH -> 3;
+            case MEDIUM -> 2;
+            case LOW -> 1;
+        };
     }
 }

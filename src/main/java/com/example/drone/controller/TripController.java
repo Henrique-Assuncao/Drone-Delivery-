@@ -120,6 +120,7 @@ public class TripController {
     }
 
     private TripResponse toResponse(TripEntity trip) {
+        Instant now = Instant.now();
         List<Long> route = trip.getTripOrders().stream()
                 .map(tripOrder -> tripOrder.getOrder().getId())
                 .toList();
@@ -152,6 +153,9 @@ public class TripController {
                 trip.getTotalDistance(),
                 trip.getEstimatedDuration(),
                 trip.getAverageDeliveryTime(),
+                TripDispatchPolicy.idealDispatchTimeFor(trip).orElse(null),
+                TripDispatchPolicy.isDispatchWindowOpen(trip, now),
+                TripDispatchPolicy.minutesUntilIdealDispatch(trip, now),
                 TripSimulationService.stateFor(trip)
         );
     }
@@ -180,6 +184,13 @@ public class TripController {
             double estimatedDuration,
             @Schema(description = "Tempo médio estimado de entrega em minutos (min).", example = "8.0")
             double averageDeliveryTime,
+            @JsonFormat(shape = JsonFormat.Shape.STRING)
+            @Schema(description = "Horário ideal de saída para cumprir os horários confirmados de entrega.")
+            Instant idealDispatchTime,
+            @Schema(description = "Indica se a janela ideal de saída já está aberta.", example = "false")
+            boolean dispatchWindowOpen,
+            @Schema(description = "Minutos restantes até o horário ideal de saída.", example = "12.5")
+            double minutesUntilIdealDispatch,
             TripSimulationState simulation
     ) {
     }

@@ -48,7 +48,9 @@ class DeliveryQueueControllerTest {
                 2.0,
                 Priority.MEDIUM,
                 OrderStatus.REQUESTED,
-                Instant.parse("2026-07-25T10:01:00Z")
+                Instant.parse("2026-07-25T10:00:00Z"),
+                "ORDER-SECOND",
+                Instant.parse("2026-07-25T12:00:00Z")
         ));
         storage.save(new OrderEntity(
                 null,
@@ -68,7 +70,9 @@ class DeliveryQueueControllerTest {
                 3.0,
                 Priority.MEDIUM,
                 OrderStatus.PENDING_REASSIGNMENT,
-                Instant.parse("2026-07-25T10:00:30Z")
+                Instant.parse("2026-07-25T10:00:30Z"),
+                "ORDER-REASSIGNMENT",
+                Instant.parse("2026-07-25T10:45:00Z")
         ));
         storage.save(new OrderEntity(
                 null,
@@ -78,7 +82,9 @@ class DeliveryQueueControllerTest {
                 4.0,
                 Priority.HIGH,
                 OrderStatus.REQUESTED,
-                Instant.parse("2026-07-25T10:00:00Z")
+                Instant.parse("2026-07-25T10:01:00Z"),
+                "ORDER-FIRST",
+                Instant.parse("2026-07-25T10:30:00Z")
         ));
 
         mockMvc.perform(get("/api/delivery-queue"))
@@ -91,14 +97,17 @@ class DeliveryQueueControllerTest {
                 .andExpect(jsonPath("$[0].weight").value(4.0))
                 .andExpect(jsonPath("$[0].priority").value("HIGH"))
                 .andExpect(jsonPath("$[0].status").value("REQUESTED"))
-                .andExpect(jsonPath("$[0].queuedAt").value("2026-07-25T10:00:00Z"))
+                .andExpect(jsonPath("$[0].queuedAt").value("2026-07-25T10:01:00Z"))
+                .andExpect(jsonPath("$[0].confirmedDeliveryTime").value("2026-07-25T10:30:00Z"))
                 .andExpect(jsonPath("$[1].orderId").value(3))
                 .andExpect(jsonPath("$[1].orderIdentifier").value("ORDER-REASSIGNMENT"))
                 .andExpect(jsonPath("$[1].status").value("PENDING_REASSIGNMENT"))
                 .andExpect(jsonPath("$[1].queuedAt").value("2026-07-25T10:00:30Z"))
+                .andExpect(jsonPath("$[1].confirmedDeliveryTime").value("2026-07-25T10:45:00Z"))
                 .andExpect(jsonPath("$[2].orderId").value(1))
                 .andExpect(jsonPath("$[2].orderIdentifier").value("ORDER-SECOND"))
-                .andExpect(jsonPath("$[2].queuedAt").value("2026-07-25T10:01:00Z"));
+                .andExpect(jsonPath("$[2].queuedAt").value("2026-07-25T10:00:00Z"))
+                .andExpect(jsonPath("$[2].confirmedDeliveryTime").value("2026-07-25T12:00:00Z"));
     }
 
     private static class InMemoryOrderStorage implements OrderStorage {
@@ -141,9 +150,19 @@ class DeliveryQueueControllerTest {
             return ordersById.values().stream()
                     .filter(order -> order.getStatus() == OrderStatus.REQUESTED
                             || order.getStatus() == OrderStatus.PENDING_REASSIGNMENT)
-                    .sorted(Comparator.comparing(OrderEntity::getQueuedAt)
+                    .sorted(Comparator.comparing(OrderEntity::getConfirmedDeliveryTime)
+                            .thenComparing(Comparator.comparingInt((OrderEntity order) -> priorityRank(order.getPriority())).reversed())
+                            .thenComparing(OrderEntity::getQueuedAt)
                             .thenComparing(OrderEntity::getId))
                     .toList();
+        }
+
+        private int priorityRank(Priority priority) {
+            return switch (priority) {
+                case HIGH -> 3;
+                case MEDIUM -> 2;
+                case LOW -> 1;
+            };
         }
 
         @Override

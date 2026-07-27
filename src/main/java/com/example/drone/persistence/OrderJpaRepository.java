@@ -16,5 +16,5 @@ interface OrderJpaRepository extends JpaRepository<OrderEntity, Long> {
 
     List<OrderEntity> findByClientUser_IdOrderByIdAsc(Long clientUserId);
 
-    List<OrderEntity> findByStatusInOrderByQueuedAtAscIdAsc(Collection<OrderStatus> statuses);
+    List<OrderEntity> findByStatusIn(Collection<OrderStatus> statuses);
 }

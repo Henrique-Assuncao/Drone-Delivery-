@@ -163,7 +163,7 @@ O dashboard atual possui:
 - descrições por tooltip nos botões de ação da consulta operacional;
 - visão detalhada de viagem com rota, progresso por entrega e histórico de telemetria;
 - mapa 2D com base, pedidos, obstáculos, marcador do drone em movimento, modo de viagem selecionada ou todas as viagens, cores por viagem, setas de direção e pontos numerados pela ordem da rota;
-- simulação automática de viagens planejadas ou em rota, com consumo de bateria, solicitação de disponibilidade do cliente na aproximação, parada em pontos alcançados para confirmação do cliente, prazo de 1 minuto para informar o código, conclusão da rota ou retorno antecipado;
+- simulação automática de viagens planejadas ou em rota, respeitando janela ideal de saída, com consumo de bateria, solicitação de disponibilidade do cliente na aproximação, parada em pontos alcançados para confirmação do cliente, prazo de 1 minuto para informar o código, conclusão da rota ou retorno antecipado;
 - visão dedicada de filas de entrega, reatribuição e recarga;
 - cadastro operacional de drones e pedidos;
 - acionamento de planejamento persistido com opção de rota otimizada;
@@ -654,8 +654,8 @@ Endpoint:
 GET http://localhost:8080/api/delivery-queue
 ```
 
-Esse endpoint lista pedidos `REQUESTED` e `PENDING_REASSIGNMENT` na ordem de entrada na fila operacional.
-A fila é ordenada por `queuedAt` e, em caso de empate, por `id`.
+Esse endpoint lista pedidos `REQUESTED` e `PENDING_REASSIGNMENT` na ordem da fila operacional.
+A fila é ordenada por `confirmedDeliveryTime`, prioridade, `queuedAt` e, em caso de empate, por `id`.
 
 Saida JSON:
 
@@ -789,11 +789,15 @@ Entrada:
 
 ```text
 Sem corpo obrigatorio. O endpoint usa drones `AVAILABLE` e pedidos `REQUESTED` ou `PENDING_REASSIGNMENT` salvos no banco.
-Por padrao, optimizeRoute=true define automaticamente a ordem por prioridade, maior peso, menor distancia da base e identificador.
+Por padrao, optimizeRoute=true define automaticamente a ordem por horario confirmado de entrega, prioridade, maior peso, menor distancia da base e identificador.
 Com optimizeRoute=false, o planejamento respeita a ordem da fila operacional de pedidos.
 Obstaculos ativos aumentam a distancia dos trechos que cruzariam a zona circular.
 Drones so entram no plano se tiverem bateria suficiente para a rota completa e a reserva minima de retorno.
 Drones disponiveis que teriam peso e alcance para pedidos solicitados, mas nao possuem bateria suficiente para nenhum deles, entram automaticamente na fila de recarga.
+O horario ideal de saida e calculado pelo menor valor entre horario confirmado de entrega menos tempo estimado ate cada pacote da rota.
+Viagens `PLANNED` antes desse horario ainda podem receber carga quando a rota recalculada respeita peso, alcance, bateria e obstaculos.
+Viagens `PLANNED` com janela de saida aberta e viagens `IN_ROUTE` sao tratadas como reservadas para novas rodadas de planejamento.
+Em uma mesma rodada de planejamento, cada drone disponivel recebe no maximo uma viagem planejada. Se uma encomenda nao couber na viagem do drone ja reservado, o planejamento tenta aloca-la imediatamente em outro drone disponivel e capaz; se nao houver outro drone imediato, o pedido fica como nao alocado com motivo especifico.
 ```
 
 Saida JSON:
@@ -851,6 +855,7 @@ Motivos possíveis para pedidos não alocados:
 - `Pedido excede o alcance máximo dos drones disponíveis.`
 - `Pedido excede a capacidade máxima de peso e o alcance máximo dos drones disponíveis.`
 - `Pedido exige mais bateria do que a frota disponível possui para concluir a rota e retornar em segurança.`
+- `Pedido exige outro drone imediato, mas não há drone disponível nesta rodada de planejamento.`
 - `Pedido não pode ser atendido por nenhum drone no planejamento atual.`
 
 Pedidos alocados passam para `ALLOCATED`.
@@ -1210,7 +1215,7 @@ Erros esperados:
 - A consulta de pedido por `id` retorna `404` quando o pedido não existe.
 - Pedidos `REQUESTED` e `PENDING_REASSIGNMENT` compõem a fila operacional de entrega.
 - A fila operacional de pedidos fica em `GET /api/delivery-queue`.
-- A fila operacional é ordenada por `queuedAt` e `id`.
+- A fila operacional é ordenada por `confirmedDeliveryTime`, prioridade, `queuedAt` e `id`.
 - Avaliações do serviço ficam em `POST /api/reviews`, `GET /api/reviews` e `GET /api/reviews/{id}`.
 - Avaliações aceitam estrelas de 1 a 5, título e feedback do cliente.
 - Obstáculos circulares ativos ficam em `GET /api/obstacles`.
@@ -1219,8 +1224,10 @@ Erros esperados:
 - Filtros de status invalidos retornam HTTP `400` com os valores aceitos.
 - O planejamento operacional usa apenas drones `AVAILABLE` e pedidos `REQUESTED` ou `PENDING_REASSIGNMENT` salvos.
 - O planejamento usa `optimizeRoute=true` por padrao.
-- Com `optimizeRoute=true`, entregas sao ordenadas automaticamente por prioridade, maior peso, menor distancia da base e identificador.
+- Com `optimizeRoute=true`, entregas sao ordenadas automaticamente por horario confirmado, prioridade, maior peso, menor distancia da base e identificador.
 - Com `optimizeRoute=false`, o planejamento respeita a ordem da fila operacional.
+- Cada drone disponivel recebe no maximo uma viagem planejada por rodada de planejamento.
+- Quando uma encomenda nao cabe na viagem ja planejada para um drone, o planejamento tenta aloca-la imediatamente em outro drone disponivel e capaz.
 - Obstaculos ativos aumentam a distancia dos trechos de rota que cruzariam a zona circular.
 - O planejamento move para a fila de recarga drones que teriam peso e alcance para pedidos solicitados, mas nao possuem bateria suficiente para atende-los.
 - Viagens criadas pelo planejamento iniciam com status `PLANNED`.
@@ -1230,13 +1237,14 @@ Erros esperados:
 - A duração estimada da viagem é calculada por `(totalDistance / speed) * 60` do drone associado.
 - O tempo médio até entrega fica em `averageDeliveryTime`, calculado pela média dos tempos acumulados por pacote.
 - O início de uma viagem exige status `PLANNED` e drone `AVAILABLE`.
+- O início de uma viagem `PLANNED` antes da janela ideal de saída retorna HTTP `400`.
 - Ao iniciar uma viagem, viagem, drone e pedidos passam para `IN_ROUTE`.
 - A telemetria de viagem fica em `POST /api/trips/{id}/telemetry`.
 - A telemetria de viagem atualiza a bateria atual do drone associado.
 - A telemetria de viagem é persistida em histórico consultável por `GET /api/trips/{id}/telemetry`.
 - Entregas durante uma viagem exigem confirmação de disponibilidade com `POST /api/trips/{id}/route/{routePosition}/availability` antes da confirmação por código em `POST /api/trips/{id}/route/{routePosition}/deliver`.
 - A simulação de viagem fica em `GET /api/trips/{id}/simulation` e `POST /api/trips/{id}/simulation/tick`.
-- A simulação automática inicia viagens planejadas, move o drone, consome bateria, solicita disponibilidade na aproximação, para em entregas alcançadas aguardando confirmação do cliente e conclui a viagem quando a rota termina.
+- A simulação automática mantém viagens planejadas paradas antes da janela ideal de saída; quando a janela abre, inicia a viagem, move o drone, consome bateria, solicita disponibilidade na aproximação, para em entregas alcançadas aguardando confirmação do cliente e conclui a viagem quando a rota termina.
 - Se o cliente não responder à solicitação de disponibilidade, o drone retorna à base, a viagem passa para `RETURNED_EARLY` e o pacote atual passa para `NOT_DELIVERED`.
 - Se o cliente confirmar disponibilidade, mas não informar o código de recebimento em 1 minuto após a chegada do drone, o pacote atual passa para `NOT_DELIVERED` e a viagem segue para os próximos pontos da rota.
 - Se uma telemetria deixar a rota completa insegura, o retorno antecipado é acionado imediatamente.
@@ -1262,15 +1270,17 @@ O planejador usa uma estrategia deterministica simples, baseada em first-fit.
 
 Fluxo:
 
-1. Ordena drones por maior capacidade, maior alcance e identificador.
-2. Processa pedidos por prioridade: `HIGH`, depois `MEDIUM`, depois `LOW`.
-3. Dentro de cada prioridade, ordena pedidos por maior peso, maior distancia de ida e volta a partir da base, e identificador.
+1. Ordena drones por menor capacidade capaz, menor alcance capaz e identificador, preservando drones maiores para pacotes que realmente dependem deles.
+2. Processa pedidos por horario confirmado de entrega mais proximo.
+3. Em caso de empate no horario confirmado, ordena por prioridade, maior peso, menor distancia a partir da base e identificador.
 4. Para cada pedido, verifica se algum drone consegue atende-lo sozinho.
 5. Se nenhum drone conseguir, o pedido entra em `unallocatedOrders` com motivo detalhado quando a falha for peso, alcance, bateria ou uma combinacao conhecida.
-6. Se for possivel atender, tenta inserir o pedido na primeira viagem existente da mesma prioridade.
-7. Se nao couber em viagem existente, cria uma nova viagem com o primeiro drone capaz.
+6. Antes da janela ideal de saida, viagens `PLANNED` existentes entram como viagens abertas para receber mais carga.
+7. Se for possivel atender, tenta inserir o pedido em uma viagem existente que ainda respeite peso, alcance, bateria e obstaculos.
+8. Se nao couber em viagem existente, cria uma nova viagem com o primeiro drone capaz que ainda nao tenha viagem planejada na rodada.
+9. Se o pedido exigir outro drone imediato e todos os drones capazes ja tiverem viagem planejada, o pedido entra em `unallocatedOrders` com motivo especifico.
 
-O algoritmo busca reduzir o numero de viagens dentro de cada grupo de prioridade, mas nao prova otimalidade global.
+O algoritmo busca reduzir o numero de viagens sem sacrificar o atendimento em tempo habil, mas nao prova otimalidade global.
 Quando ha obstaculos ativos, as comparacoes de distancia usam a distancia ajustada por desvio circular.
 
 ## Decisoes e trade-offs
@@ -1286,6 +1296,7 @@ Quando ha obstaculos ativos, as comparacoes de distancia usam a distancia ajusta
 - A consulta de viagens carrega drone e pedidos da rota junto com a viagem para funcionar com `spring.jpa.open-in-view=false`.
 - A transicao de inicio rejeita viagem inexistente com HTTP `404`.
 - A transicao de inicio rejeita viagem fora de `PLANNED` ou drone fora de `AVAILABLE` com HTTP `400`.
+- A transicao de inicio rejeita viagem `PLANNED` antes da janela ideal de saida com HTTP `400`.
 - A transicao de conclusao rejeita viagem inexistente com HTTP `404`.
 - A transicao de conclusao rejeita viagem fora de `IN_ROUTE` com HTTP `400`.
 - A transicao de cancelamento aceita viagens `PLANNED` ou `IN_ROUTE`.
@@ -1299,10 +1310,13 @@ Quando ha obstaculos ativos, as comparacoes de distancia usam a distancia ajusta
 - A interface atual para Postman e uma API REST minima com cadastro, consulta e planejamento operacional persistidos.
 - O algoritmo de dominio continua isolado e tambem e exercitado diretamente por testes unitarios.
 - As consultas de drones usam ordenacao por `id` crescente para manter respostas deterministicas.
-- No planejamento padrao, prioridades nao sao misturadas na mesma fase de planejamento.
+- No planejamento padrao, o horario confirmado de entrega tem precedencia sobre prioridade para reduzir atraso operacional.
 - No planejamento padrao, a rota dentro de cada viagem e otimizada antes da validacao de alcance e da persistencia.
 - O planejamento valida bateria minima depois de calcular a distancia ajustada da rota.
-- Com `optimizeRoute=true`, a rota usa ordenacao deterministica por prioridade, maior peso, menor distancia da base e identificador.
+- Com `optimizeRoute=true`, a rota usa ordenacao deterministica por horario confirmado, prioridade, maior peso, menor distancia da base e identificador.
+- Cada drone disponivel e reservado para no maximo uma viagem planejada por rodada, evitando sequenciar excedentes no mesmo drone quando outro drone pode sair imediatamente.
+- Viagens planejadas antes da janela ideal de saida podem receber novos pedidos quando a rota recalculada continua dentro dos limites do drone.
+- Viagens planejadas com janela ideal de saida aberta e viagens em rota nao recebem novos pedidos no planejamento seguinte.
 - A transicao de inicio rejeita viagem quando a bateria atual do drone nao cobre a rota salva e a reserva minima de retorno.
 - O tratamento de entrada invalida usa excecoes de dominio, sem dependencia de HTTP.
 - Pedido impossivel de alocar nao e erro de entrada; ele aparece no resultado como nao alocado.

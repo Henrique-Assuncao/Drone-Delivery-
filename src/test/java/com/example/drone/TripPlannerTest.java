@@ -8,6 +8,7 @@ import com.example.drone.service.*;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -137,14 +138,17 @@ class TripPlannerTest {
     }
 
     @Test
-    void shouldCreateMoreThanOneTripWhenOrdersDoNotFitTogether() {
-        Drone drone = new Drone("DRONE-1", 10.0, 20.0);
+    void shouldAllocateOverflowToAnotherDroneWhenOrdersDoNotFitTogether() {
+        Drone firstDrone = new Drone("DRONE-1", 10.0, 20.0);
+        Drone secondDrone = new Drone("DRONE-2", 10.0, 20.0);
         Order firstOrder = order("ORDER-1", 1.0, 1.0, 8.0, Priority.HIGH);
         Order secondOrder = order("ORDER-2", 2.0, 2.0, 8.0, Priority.HIGH);
 
-        TripPlan plan = planner.plan(List.of(drone), List.of(firstOrder, secondOrder));
+        TripPlan plan = planner.plan(List.of(firstDrone, secondDrone), List.of(firstOrder, secondOrder));
 
         assertEquals(2, plan.trips().size());
+        assertEquals(firstDrone, plan.trips().get(0).drone());
+        assertEquals(secondDrone, plan.trips().get(1).drone());
         assertEquals(1, plan.trips().get(0).orders().size());
         assertEquals(1, plan.trips().get(1).orders().size());
         assertTrue(plannedOrders(plan).containsAll(List.of(firstOrder, secondOrder)));
@@ -152,14 +156,66 @@ class TripPlannerTest {
     }
 
     @Test
-    void shouldCreateMoreThanOneTripWhenOrdersDoNotFitTogetherByBattery() {
-        Drone drone = new Drone("DRONE-1", 10.0, 100.0, 23.0, 1.0, 20.0, 1.0, 10.0);
-        Order firstOrder = order("ORDER-1", 1.5, 0.0, 1.0, Priority.HIGH);
-        Order secondOrder = order("ORDER-2", -1.5, 0.0, 1.0, Priority.HIGH);
+    void shouldPreserveLargerDroneForHeavierPendingOrder() {
+        Drone smallDrone = new Drone("DRONE-SMALL", 5.0, 20.0);
+        Drone largeDrone = new Drone("DRONE-LARGE", 10.0, 20.0);
+        Order earlierSmallOrder = order(
+                "ORDER-SMALL",
+                1.0,
+                1.0,
+                4.0,
+                Priority.HIGH,
+                Instant.parse("2026-07-26T17:00:00Z")
+        );
+        Order laterHeavyOrder = order(
+                "ORDER-HEAVY",
+                2.0,
+                2.0,
+                8.0,
+                Priority.HIGH,
+                Instant.parse("2026-07-26T17:05:00Z")
+        );
+
+        TripPlan plan = planner.plan(List.of(largeDrone, smallDrone), List.of(earlierSmallOrder, laterHeavyOrder));
+
+        assertEquals(2, plan.trips().size());
+        assertEquals(smallDrone, plan.trips().get(0).drone());
+        assertEquals(List.of(earlierSmallOrder), plan.trips().get(0).orders());
+        assertEquals(largeDrone, plan.trips().get(1).drone());
+        assertEquals(List.of(laterHeavyOrder), plan.trips().get(1).orders());
+        assertTrue(plan.unallocatedOrders().isEmpty());
+    }
+
+    @Test
+    void shouldMarkOverflowAsUnallocatedWhenNoImmediateDroneIsAvailable() {
+        Drone drone = new Drone("DRONE-1", 10.0, 20.0);
+        Order firstOrder = order("ORDER-1", 1.0, 1.0, 8.0, Priority.HIGH);
+        Order secondOrder = order("ORDER-2", 2.0, 2.0, 8.0, Priority.HIGH);
 
         TripPlan plan = planner.plan(List.of(drone), List.of(firstOrder, secondOrder));
 
+        assertEquals(1, plan.trips().size());
+        assertEquals(List.of(firstOrder), plan.trips().get(0).orders());
+        assertEquals(1, plan.unallocatedOrders().size());
+        assertEquals(secondOrder, plan.unallocatedOrders().get(0).order());
+        assertEquals(
+                "order requires another drone but no immediate drone is available",
+                plan.unallocatedOrders().get(0).reason()
+        );
+    }
+
+    @Test
+    void shouldAllocateOverflowToAnotherDroneWhenOrdersDoNotFitTogetherByBattery() {
+        Drone firstDrone = new Drone("DRONE-1", 10.0, 100.0, 23.0, 1.0, 20.0, 1.0, 10.0);
+        Drone secondDrone = new Drone("DRONE-2", 10.0, 100.0, 23.0, 1.0, 20.0, 1.0, 10.0);
+        Order firstOrder = order("ORDER-1", 1.5, 0.0, 1.0, Priority.HIGH);
+        Order secondOrder = order("ORDER-2", -1.5, 0.0, 1.0, Priority.HIGH);
+
+        TripPlan plan = planner.plan(List.of(firstDrone, secondDrone), List.of(firstOrder, secondOrder));
+
         assertEquals(2, plan.trips().size());
+        assertEquals(firstDrone, plan.trips().get(0).drone());
+        assertEquals(secondDrone, plan.trips().get(1).drone());
         assertEquals(1, plan.trips().get(0).orders().size());
         assertEquals(1, plan.trips().get(1).orders().size());
         assertTrue(plannedOrders(plan).containsAll(List.of(firstOrder, secondOrder)));
@@ -265,6 +321,33 @@ class TripPlannerTest {
     }
 
     @Test
+    void shouldPrioritizeConfirmedDeliveryTimeBeforePriority() {
+        Drone drone = new Drone("DRONE-1", 20.0, 100.0);
+        Order laterHighPriorityOrder = order(
+                "ORDER-HIGH-LATER",
+                1.0,
+                0.0,
+                1.0,
+                Priority.HIGH,
+                Instant.parse("2026-07-26T18:00:00Z")
+        );
+        Order earlierLowPriorityOrder = order(
+                "ORDER-LOW-EARLIER",
+                2.0,
+                0.0,
+                1.0,
+                Priority.LOW,
+                Instant.parse("2026-07-26T17:00:00Z")
+        );
+
+        TripPlan plan = planner.plan(List.of(drone), List.of(laterHighPriorityOrder, earlierLowPriorityOrder));
+
+        assertEquals(1, plan.trips().size());
+        assertEquals(List.of(earlierLowPriorityOrder, laterHighPriorityOrder), plan.trips().get(0).route());
+        assertTrue(plan.unallocatedOrders().isEmpty());
+    }
+
+    @Test
     void shouldAllocateOrderExactlyAtCapacityAndRangeLimits() {
         Drone drone = new Drone("DRONE-1", 10.0, 10.0);
         Order order = order("ORDER-1", 3.0, 4.0, 10.0, Priority.HIGH);
@@ -291,6 +374,17 @@ class TripPlannerTest {
 
     private Order order(String identifier, double x, double y, double weight, Priority priority) {
         return new Order(identifier, new Coordinate(x, y), weight, priority);
+    }
+
+    private Order order(
+            String identifier,
+            double x,
+            double y,
+            double weight,
+            Priority priority,
+            Instant confirmedDeliveryTime
+    ) {
+        return new Order(identifier, new Coordinate(x, y), weight, priority, confirmedDeliveryTime);
     }
 
     private List<Order> plannedOrders(TripPlan plan) {

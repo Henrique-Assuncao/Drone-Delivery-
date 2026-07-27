@@ -40,6 +40,7 @@ public class TripPlanController {
     }
 
     private TripResponse toTripResponse(TripEntity trip) {
+        Instant now = Instant.now();
         List<Long> route = trip.getTripOrders().stream()
                 .map(tripOrder -> tripOrder.getOrder().getId())
                 .toList();
@@ -64,7 +65,10 @@ public class TripPlanController {
                 trip.getTotalWeight(),
                 trip.getTotalDistance(),
                 trip.getEstimatedDuration(),
-                trip.getAverageDeliveryTime()
+                trip.getAverageDeliveryTime(),
+                TripDispatchPolicy.idealDispatchTimeFor(trip).orElse(null),
+                TripDispatchPolicy.isDispatchWindowOpen(trip, now),
+                TripDispatchPolicy.minutesUntilIdealDispatch(trip, now)
         );
     }
 
@@ -95,7 +99,14 @@ public class TripPlanController {
             @Schema(description = "Duração estimada da viagem em minutos (min).", example = "20.0")
             double estimatedDuration,
             @Schema(description = "Tempo médio estimado de entrega em minutos (min).", example = "8.0")
-            double averageDeliveryTime
+            double averageDeliveryTime,
+            @JsonFormat(shape = JsonFormat.Shape.STRING)
+            @Schema(description = "Horário ideal de saída para cumprir os horários confirmados de entrega.")
+            Instant idealDispatchTime,
+            @Schema(description = "Indica se a janela ideal de saída já está aberta.", example = "false")
+            boolean dispatchWindowOpen,
+            @Schema(description = "Minutos restantes até o horário ideal de saída.", example = "12.5")
+            double minutesUntilIdealDispatch
     ) {
     }
 

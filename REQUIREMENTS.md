@@ -67,10 +67,19 @@ O roteiro atual aprovou a evolução de bateria, recarga, cálculo de tempo, obs
 - Drones não podem transportar peso acima de sua capacidade máxima.
 - Drones não podem executar viagens que excedam seu alcance máximo.
 - Uma viagem pode transportar vários pedidos, desde que respeite a capacidade máxima de peso e o alcance máximo do drone.
-- A sequência de pedidos dentro de cada viagem deve ser otimizada para reduzir a distância total da rota.
+- A sequência de pedidos dentro de cada viagem deve ser otimizada para priorizar o horário confirmado de entrega e reduzir atrasos operacionais.
 - A validação de alcance da viagem deve considerar a rota otimizada.
-- A alocação deve tentar reduzir o número total de viagens dentro de cada grupo de prioridade.
-- Os pedidos devem ser processados na ordem de prioridade alta, média e baixa.
+- A alocação deve tentar reduzir o número total de viagens sem comprometer o atendimento em tempo hábil.
+- Na operação persistida, os pedidos devem ser processados primeiro pelo horário confirmado de entrega mais próximo.
+- Quando houver empate de horário confirmado, os pedidos devem ser ordenados por prioridade alta, média e baixa.
+- Em uma mesma rodada de planejamento, cada drone disponível deve receber no máximo uma viagem planejada.
+- A janela ideal de saída de uma viagem deve ser calculada pelo menor valor entre `confirmedDeliveryTime - estimatedDeliveryTime` de cada pacote da rota.
+- Viagens `PLANNED` antes da janela ideal de saída podem receber novos pedidos, desde que a rota recalculada continue respeitando peso, alcance, bateria e obstáculos.
+- Viagens `PLANNED` com janela ideal de saída já aberta devem ser tratadas como prontas para partir e não devem receber novos pedidos no planejamento.
+- Drones com viagem `IN_ROUTE` devem ser considerados reservados e não podem receber novas viagens em outro planejamento.
+- Quando uma encomenda não couber na viagem já planejada para um drone, ela deve ser alocada imediatamente a outro drone disponível e capaz, mesmo quando pertencer ao mesmo cliente.
+- Quando uma encomenda individualmente atendível exigir outro drone imediato e não houver drone disponível na rodada, ela deve ser marcada como não alocada com motivo específico.
+- Ao criar uma nova viagem para um pedido, o planejamento deve escolher o menor drone capaz de atender aquela viagem, preservando drones maiores para pacotes que dependam de maior capacidade.
 - Pacotes impossíveis de transportar por qualquer drone devem ser marcados como não alocados com o respectivo motivo.
 - Motivos de não alocação por restrição conhecida devem diferenciar:
   - peso acima da capacidade máxima dos drones;
@@ -264,10 +273,10 @@ Esta seção registra o roteiro aprovado e o estado implementado.
 - A estimativa de tempo de entrega deve considerar distância ajustada e velocidade do drone.
 - Obstáculos impactam distância, tempo e viabilidade da rota.
 - Obstáculos podem tornar uma rota inviável quando não houver desvio seguro dentro das regras do modelo.
-- A fila de entrega deverá ordenar pedidos por prioridade e data de entrada na fila.
+- A fila de entrega deverá ordenar pedidos por horário confirmado de entrega, prioridade, data de entrada na fila e identificador persistido.
 - O planejamento deverá poder usar rota otimizada ou respeitar a sequência da fila, conforme opção informada na criação do plano.
-- A rota automática deve ordenar entregas por prioridade, maior peso, menor distância da base e identificador.
-- A otimização de rota considera peso, prioridade, distância, fila, bateria e obstáculos antes de persistir uma viagem planejada.
+- A rota automática deve ordenar entregas por horário confirmado, prioridade, maior peso, menor distância da base e identificador.
+- A otimização de rota considera horário confirmado, peso, prioridade, distância, fila, bateria e obstáculos antes de persistir uma viagem planejada.
 
 ### Campos de drone implementados
 
@@ -565,7 +574,7 @@ Saída:
 ]
 ```
 
-Pedidos na fila operacional devem ser ordenados por `queuedAt` e `id`.
+Pedidos na fila operacional devem ser ordenados por `confirmedDeliveryTime`, prioridade, `queuedAt` e `id`.
 
 ### Obstáculos
 
@@ -660,6 +669,7 @@ Motivos possíveis para pedidos não alocados:
 - `order exceeds max drone range`;
 - `order exceeds max drone weight capacity and max drone range`;
 - `order exceeds drone battery for complete trip and safe return`;
+- `order requires another drone but no immediate drone is available`;
 - `order cannot be served by any drone`.
 
 ### Viagens
@@ -788,8 +798,9 @@ Erros esperados:
 - O sistema gera uma alocação de entregas respeitando capacidade máxima de peso.
 - O sistema gera uma alocação de entregas respeitando alcance máximo.
 - O sistema permite alocar vários pedidos em uma mesma viagem quando capacidade e alcance forem respeitados.
-- O sistema processa pedidos de prioridade alta antes de prioridade média, e prioridade média antes de prioridade baixa.
-- O sistema busca reduzir o número de viagens necessárias dentro de cada grupo de prioridade.
+- O sistema processa pedidos operacionais pelo horário confirmado de entrega mais próximo.
+- O sistema usa prioridade alta, média e baixa como critério de desempate quando pedidos possuem o mesmo horário confirmado.
+- O sistema busca reduzir o número de viagens necessárias sem reutilizar o mesmo drone em múltiplas viagens planejadas na mesma rodada.
 - O sistema marca pacotes impossíveis de transportar como não alocados e informa o motivo.
 - O sistema diferencia motivo de não alocação por peso, alcance ou peso e alcance quando essas restrições forem identificáveis.
 - A primeira versão é exercitada por testes unitários sobre o domínio, sem exigir CLI, API REST ou interface gráfica.
@@ -834,7 +845,7 @@ Erros esperados:
 - O endpoint `GET /api/orders/{id}` retorna o pedido correspondente quando ele existe.
 - O endpoint `GET /api/orders/{id}` rejeita pedido inexistente com HTTP `404`.
 - O endpoint `GET /api/orders?status=REQUESTED` retorna somente pedidos com status `REQUESTED` em ordem crescente de `id`.
-- O endpoint `GET /api/delivery-queue` retorna pedidos `REQUESTED` e `PENDING_REASSIGNMENT` ordenados por `queuedAt` e `id`.
+- O endpoint `GET /api/delivery-queue` retorna pedidos `REQUESTED` e `PENDING_REASSIGNMENT` ordenados por `confirmedDeliveryTime`, prioridade, `queuedAt` e `id`.
 - O endpoint `POST /api/reviews` cadastra avaliações do serviço com estrelas de 1 a 5, título e feedback.
 - O endpoint `POST /api/reviews` rejeita estrelas fora de 1 a 5 com HTTP `400`.
 - O endpoint `POST /api/reviews` rejeita título ou feedback em branco com HTTP `400`.
@@ -857,8 +868,12 @@ Erros esperados:
 - O endpoint `POST /api/trip-plans` retorna `averageDeliveryTime` calculado pela média dos tempos acumulados de entrega.
 - O endpoint `POST /api/trip-plans` retorna `estimatedDeliveryTime` por posição da rota.
 - O endpoint `POST /api/trip-plans` usa `optimizeRoute=true` por padrão.
-- O endpoint `POST /api/trip-plans` com `optimizeRoute=true` ordena entregas por prioridade, maior peso, menor distância da base e identificador.
+- O endpoint `POST /api/trip-plans` com `optimizeRoute=true` ordena entregas por horário confirmado, prioridade, maior peso, menor distância da base e identificador.
 - O endpoint `POST /api/trip-plans?optimizeRoute=false` persiste a rota respeitando a fila operacional de pedidos.
+- O endpoint `POST /api/trip-plans` reserva cada drone disponível para no máximo uma viagem planejada na rodada atual.
+- O endpoint `POST /api/trip-plans` pode atualizar uma viagem `PLANNED` existente antes da janela ideal de saída para incluir novos pedidos que ainda caibam na rota.
+- O endpoint `POST /api/trip-plans` não deve adicionar pedidos a viagens `PLANNED` com janela ideal de saída aberta.
+- O endpoint `POST /api/trip-plans` aloca imediatamente em outro drone disponível a encomenda que não couber na viagem já planejada para o primeiro drone.
 - Um parâmetro `optimizeRoute` inválido retorna HTTP `400`.
 - Obstáculos ativos ajustam `totalDistance` das viagens planejadas quando algum trecho cruza a zona circular.
 - Obstáculos ativos afetam validação de alcance, validação de bateria e `estimatedDuration`.
@@ -871,6 +886,7 @@ Erros esperados:
 - O endpoint `POST /api/trip-plans` altera pedidos impossíveis para `UNALLOCATED`.
 - O endpoint `POST /api/trip-plans` retorna motivo detalhado para pedido não alocado por peso, alcance ou peso e alcance.
 - O endpoint `POST /api/trip-plans` retorna motivo detalhado para pedido não alocado por bateria insuficiente.
+- O endpoint `POST /api/trip-plans` retorna motivo detalhado para pedido individualmente atendível sem drone imediato disponível na rodada.
 - O endpoint `GET /api/trips` retorna viagens salvas em ordem crescente de `id`.
 - O endpoint `GET /api/trips/{id}` retorna a viagem correspondente quando ela existe.
 - O endpoint `GET /api/trips/{id}` rejeita viagem inexistente com HTTP `404`.
@@ -879,6 +895,7 @@ Erros esperados:
 - O endpoint `POST /api/trips/{id}/start` altera os pedidos associados para `IN_ROUTE`.
 - O endpoint `POST /api/trips/{id}/start` rejeita viagem inexistente com HTTP `404`.
 - O endpoint `POST /api/trips/{id}/start` rejeita viagem que não esteja `PLANNED` com HTTP `400`.
+- O endpoint `POST /api/trips/{id}/start` rejeita viagem `PLANNED` antes da janela ideal de saída com HTTP `400`.
 - O endpoint `POST /api/trips/{id}/start` rejeita drone que não esteja `AVAILABLE` com HTTP `400`.
 - O endpoint `POST /api/trips/{id}/start` rejeita drone sem bateria suficiente para a rota completa e reserva mínima de retorno com HTTP `400`.
 - O endpoint `POST /api/trips/{id}/telemetry` atualiza a bateria atual do drone associado à viagem.
@@ -922,7 +939,7 @@ Erros esperados:
 - A suite de testes deve validar pelo menos uma jornada operacional persistida com Spring Boot, JPA, Flyway e PostgreSQL.
 - O contrato HTTP da API operacional deve estar consolidado em `API.md`.
 - Viagens recém-planejadas iniciam como `PLANNED`.
-- Uma viagem `PLANNED` pode ser iniciada e passar para `IN_ROUTE`.
+- Uma viagem `PLANNED` pode ser iniciada e passar para `IN_ROUTE` quando a janela ideal de saída estiver aberta.
 - Uma viagem `IN_ROUTE` pode ser concluída e passar para `COMPLETED`.
 - Uma viagem `IN_ROUTE` pode retornar antecipadamente e passar para `RETURNED_EARLY`.
 - Uma viagem que ainda não foi concluída pode ser cancelada e passar para `CANCELLED`.
@@ -941,7 +958,7 @@ Erros esperados:
 - O dashboard frontend diferencia viagens no mapa 2D com cores, chips de seleção, setas de direção e pontos numerados pela ordem da rota.
 - O dashboard frontend exibe o marcador do drone em movimento conforme o estado de simulação da viagem.
 - O backend permite avançar uma viagem por tempo simulado com `POST /api/trips/{id}/simulation/tick`.
-- A simulação automática inicia viagens planejadas, move o drone, consome bateria, solicita disponibilidade do cliente na aproximação, para em entregas alcançadas aguardando confirmação do cliente e conclui a viagem quando a rota termina.
+- A simulação automática mantém viagens planejadas paradas antes da janela ideal de saída; quando a janela abre, inicia a viagem, move o drone, consome bateria, solicita disponibilidade do cliente na aproximação, para em entregas alcançadas aguardando confirmação do cliente e conclui a viagem quando a rota termina.
 - A simulação automática retorna o drone à base e marca o pacote atual como `NOT_DELIVERED` se o cliente não responder à solicitação de disponibilidade.
 - A simulação automática aciona retorno antecipado quando a rota restante deixa de ser segura para a bateria atual.
 - O dashboard frontend permite consultar filas operacionais de entrega, reatribuição e recarga.

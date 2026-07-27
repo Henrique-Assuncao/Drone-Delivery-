@@ -272,4 +272,35 @@ public class TripEntity {
 
         tripOrders.add(tripOrder);
     }
+
+    public void replacePlannedRoute(
+            double totalWeight,
+            double totalDistance,
+            List<OrderEntity> route,
+            List<Double> estimatedDeliveryTimes
+    ) {
+        if (status != TripStatus.PLANNED) {
+            throw new InvalidInputException("trip must be PLANNED to replace route");
+        }
+
+        if (route == null) {
+            throw new InvalidInputException("route must not be null");
+        }
+
+        if (estimatedDeliveryTimes == null) {
+            throw new InvalidInputException("estimatedDeliveryTimes must not be null");
+        }
+
+        if (route.size() != estimatedDeliveryTimes.size()) {
+            throw new InvalidInputException("route and estimatedDeliveryTimes must have same size");
+        }
+
+        this.totalWeight = totalWeight;
+        this.totalDistance = totalDistance;
+        this.tripOrders.clear();
+
+        for (int index = 0; index < route.size(); index++) {
+            addOrder(route.get(index), index, null, estimatedDeliveryTimes.get(index));
+        }
+    }
 }

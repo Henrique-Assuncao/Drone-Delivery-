@@ -194,7 +194,7 @@ Amplie o planejamento para considerar rota otimizada, bateria operacional, reser
 
 Execute as seguintes etapas:
 
-- Ordene a rota automaticamente por prioridade, maior peso, menor distância da base e identificador.
+- Ordene a rota automaticamente por horário confirmado, prioridade, maior peso, menor distância da base e identificador.
 - Adicione ao drone os campos `batteryLevel`, `batteryConsumptionPerDistanceUnit`, `minimumReturnBattery`, `speed` e `chargingRate`.
 - Use a fórmula `distância total * consumo + reserva mínima <= bateria atual` para validar segurança.
 - Valide bateria no planejamento e no início da viagem.
@@ -522,7 +522,32 @@ Execute as seguintes etapas:
 - Confirme que `main` rastreia `origin/main`.
 - Confirme que o diretório de trabalho ficou limpo.
 
-## 26. Validação final integrada
+## 26. Otimização de remessas por prazo e drone imediato
+
+**Base documental:** `REQUIREMENTS.md` regras de planejamento operacional; `DECISIONS.md` D081-D085 e T070-T073.
+
+**Prompt técnico**
+
+Otimize o planejamento de remessas para priorizar entrega em tempo hábil e distribuir excedentes imediatamente entre drones disponíveis. Garanta que pedidos de um mesmo cliente possam ser separados em drones distintos quando não couberem na mesma viagem.
+
+Execute as seguintes etapas:
+
+- Use o horário confirmado de entrega como primeiro critério de ordenação dos pedidos.
+- Use prioridade, peso, distância e identificador como critérios determinísticos de desempate.
+- Ordene a fila operacional por horário confirmado, prioridade, entrada na fila e identificador persistido.
+- Reserve cada drone disponível para no máximo uma viagem planejada por rodada.
+- Calcule a janela ideal de saída pela menor diferença entre horário confirmado de entrega e tempo estimado até cada pacote da rota.
+- Permita adicionar pedidos a viagens planejadas antes da janela ideal de saída quando peso, alcance, bateria e obstáculos continuarem válidos.
+- Exclua de novas rodadas os drones em rota ou com viagem planejada cuja janela ideal de saída já esteja aberta.
+- Ao criar nova viagem, selecione o menor drone capaz para preservar drones maiores para pacotes mais pesados.
+- Tente inserir cada pedido em uma viagem existente somente se peso, alcance, bateria e obstáculos continuarem válidos.
+- Aloque imediatamente em outro drone disponível e capaz quando o pedido não couber na viagem existente.
+- Marque o pedido como não alocado quando ele exigir outro drone imediato e não houver drone livre na rodada.
+- Traduza o novo motivo de não alocação para português na resposta operacional e na interface.
+- Atualize testes de domínio, planejamento persistido e fila operacional.
+- Atualize documentação de requisitos, decisões, contrato HTTP e README.
+
+## 27. Validação final integrada
 
 **Base documental:** `README.md` como executar, dashboard atual e documentação Swagger/OpenAPI.
 

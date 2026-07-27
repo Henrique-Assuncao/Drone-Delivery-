@@ -175,6 +175,31 @@ class TripControllerTest {
     }
 
     @Test
+    void shouldRejectStartingPlannedTripBeforeIdealDispatchTime() throws Exception {
+        DroneEntity drone = new DroneEntity(1L, "DRONE-1", 10.0, 20.0, DroneStatus.AVAILABLE);
+        OrderEntity order = new OrderEntity(
+                1L,
+                "ORDER-1",
+                3.0,
+                4.0,
+                4.0,
+                Priority.HIGH,
+                OrderStatus.ALLOCATED,
+                Instant.now(),
+                "ORDER-1",
+                Instant.now().plusSeconds(3_600)
+        );
+        TripEntity trip = new TripEntity(null, drone, TripStatus.PLANNED, 4.0, 10.0);
+        trip.addOrder(order, 0, null, 10.0);
+        storage.save(trip);
+
+        mockMvc.perform(post("/api/trips/1/start"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("trip must wait until ideal dispatch time"))
+                .andExpect(content().string(not(containsString("trace"))));
+    }
+
+    @Test
     void shouldReturnNotFoundWhenStartingUnknownTrip() throws Exception {
         mockMvc.perform(post("/api/trips/999/start"))
                 .andExpect(status().isNotFound())

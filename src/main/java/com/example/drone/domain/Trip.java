@@ -113,7 +113,7 @@ public class Trip {
             return copiedOrders;
         }
 
-        return DeliveryOrdering.orderByPriorityWeightAndDistance(copiedOrders, obstacles);
+        return DeliveryOrdering.orderByDeliveryTimePriorityWeightAndDistance(copiedOrders, obstacles);
     }
 
     private static List<Order> copyOfOrders(List<Order> orders) {

@@ -42,7 +42,11 @@ public class TripSimulationService {
         TripEntity trip = tripStorage.findById(tripId)
                 .orElseThrow(() -> new ResourceNotFoundException("trip not found"));
 
+        Instant now = Instant.now();
         if (trip.getStatus() == TripStatus.PLANNED) {
+            if (!TripDispatchPolicy.isDispatchWindowOpen(trip, now)) {
+                return stateFor(trip);
+            }
             startTrip(trip);
         }
 
@@ -50,7 +54,6 @@ public class TripSimulationService {
             return stateFor(trip);
         }
 
-        Instant now = Instant.now();
         double currentDistance = trip.getSimulationTravelledDistance();
         TripOrderEntity nextOpenOrder = nextOpenOrder(trip);
         if (nextOpenOrder != null) {

@@ -1825,6 +1825,11 @@ function TripDetailPanel({
         <DetailStat label="Distância" value={formatDistance(trip.totalDistance)} />
         <DetailStat label="Duração" value={formatDuration(trip.estimatedDuration)} />
         <DetailStat label="Tempo médio" value={formatDuration(trip.averageDeliveryTime)} />
+        <DetailStat label="Saída ideal" value={formatNullableDateTime(trip.idealDispatchTime)} />
+        <DetailStat
+          label="Janela"
+          value={trip.dispatchWindowOpen ? "Aberta" : `Em ${formatDuration(trip.minutesUntilIdealDispatch)}`}
+        />
       </div>
 
       <OperationMap
@@ -4144,6 +4149,7 @@ function TripTable({
             <th>Distância (km)</th>
             <th>Duração</th>
             <th>Tempo médio</th>
+            <th>Saída ideal</th>
             <th>Telemetria</th>
             <th>Ações</th>
           </tr>
@@ -4163,6 +4169,7 @@ function TripTable({
               <td>{formatDistance(trip.totalDistance)}</td>
               <td>{formatDuration(trip.estimatedDuration)}</td>
               <td>{formatDuration(trip.averageDeliveryTime)}</td>
+              <td>{formatNullableDateTime(trip.idealDispatchTime)}</td>
               <td>
                 <TelemetryControl
                   trip={trip}
@@ -4253,6 +4260,7 @@ function TripActions({
   const nextRoutePosition = nextUndeliveredRoutePosition(trip);
   const canCancel = trip.status === "PLANNED" || trip.status === "IN_ROUTE";
   const awaitingClientConfirmation = trip.status === "IN_ROUTE" && nextRoutePosition !== null;
+  const canStart = trip.status === "PLANNED" && trip.dispatchWindowOpen;
 
   return (
     <div className="rowActions">
@@ -4266,9 +4274,13 @@ function TripActions({
       />
       <ActionIconButton
         label="Iniciar viagem"
-        description="Inicia a viagem planejada e coloca o drone e os pedidos em rota."
+        description={
+          trip.status === "PLANNED" && !trip.dispatchWindowOpen
+            ? `A viagem aguardará até ${formatNullableDateTime(trip.idealDispatchTime)} para sair no prazo.`
+            : "Inicia a viagem planejada e coloca o drone e os pedidos em rota."
+        }
         icon={<Play size={16} />}
-        disabled={actionBusy || trip.status !== "PLANNED"}
+        disabled={actionBusy || !canStart}
         busy={isBusy(actionInFlight, trip.id, "start")}
         onClick={() => onTripAction(trip.id, "start")}
       />
@@ -4619,6 +4631,8 @@ function localizedStatusReason(reason?: string | null) {
       "Pedido excede a capacidade máxima de peso e o alcance máximo dos drones disponíveis.",
     "order exceeds drone battery for complete trip and safe return":
       "Pedido exige mais bateria do que a frota disponível possui para concluir a rota e retornar em segurança.",
+    "order requires another drone but no immediate drone is available":
+      "Pedido exige outro drone imediato, mas não há drone disponível nesta rodada de planejamento.",
     "order cannot be served by any drone": "Pedido não pode ser atendido por nenhum drone no planejamento atual."
   };
 
@@ -5414,8 +5428,18 @@ function average(values: number[]) {
 }
 
 function formatDuration(value: number) {
-  if (!value) {
+  if (!Number.isFinite(value) || value <= 0) {
     return "-";
+  }
+
+  if (value >= 60) {
+    const totalMinutes = Math.round(value);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+
+    return `${hours.toString().padStart(2, "0")}:${minutes
+      .toString()
+      .padStart(2, "0")} h`;
   }
 
   return `${value.toFixed(1)} min`;

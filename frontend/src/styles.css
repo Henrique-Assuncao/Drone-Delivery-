@@ -88,7 +88,7 @@ select {
 }
 
 .brandName {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 750;
 }
 
@@ -146,6 +146,7 @@ select {
   color: #c8d2d8;
   background: transparent;
   cursor: pointer;
+  font-size: 14px;
   text-decoration: none;
   text-align: left;
 }
@@ -185,19 +186,19 @@ h2 {
 }
 
 h1 {
-  font-size: clamp(28px, 4vw, 42px);
-  line-height: 1.08;
+  font-size: 32px;
+  line-height: 1.12;
 }
 
 h2 {
   color: var(--text);
-  font-size: 16px;
+  font-size: 18px;
 }
 
 h3 {
   margin: 0;
   color: var(--text);
-  font-size: 15px;
+  font-size: 16px;
   letter-spacing: 0;
 }
 
@@ -279,6 +280,7 @@ h3 {
   background: var(--surface);
   box-shadow: 0 8px 20px rgba(31, 45, 61, 0.08);
   cursor: pointer;
+  font-size: 13px;
   font-weight: 750;
   white-space: nowrap;
 }
@@ -313,6 +315,7 @@ h3 {
   padding: 0 12px;
   border-radius: 8px;
   cursor: pointer;
+  font-size: 13px;
   font-weight: 750;
   white-space: nowrap;
 }
@@ -582,7 +585,7 @@ h3 {
 
 .metricGrid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(148px, 1fr));
+  grid-template-columns: repeat(6, minmax(160px, 1fr));
   gap: 14px;
   margin-bottom: 18px;
 }
@@ -599,7 +602,7 @@ h3 {
 }
 
 .clientMetricGrid .metricValue {
-  font-size: 26px;
+  font-size: 24px;
 }
 
 .metricCard {
@@ -638,9 +641,10 @@ h3 {
 .metricValue {
   margin: 2px 0 0;
   color: var(--text);
-  font-size: 30px;
+  font-size: 26px;
   font-weight: 800;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .metricDetail {
@@ -901,6 +905,7 @@ h3 {
   border-radius: 8px;
   color: var(--accent);
   background: var(--accent-soft);
+  font-size: 13px;
   font-weight: 800;
 }
 
@@ -919,7 +924,7 @@ h3 {
 
 .statusRow strong {
   color: var(--text);
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .statusChip {
@@ -929,7 +934,7 @@ h3 {
   border-radius: 6px;
   color: #28323a;
   background: #edf1f3;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1070,7 +1075,7 @@ h3 {
 .journeyStepBody p {
   margin: 6px 0 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.35;
 }
 
@@ -1178,7 +1183,7 @@ h3 {
 
 .field span {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 750;
 }
 
@@ -1192,6 +1197,7 @@ h3 {
   color: var(--text);
   background: #ffffff;
   outline: none;
+  font-size: 14px;
 }
 
 .field input,
@@ -1267,6 +1273,7 @@ h3 {
   color: #ffffff;
   background: var(--accent);
   cursor: pointer;
+  font-size: 13px;
   font-weight: 750;
 }
 
@@ -1320,7 +1327,7 @@ h3 {
   display: block;
   margin-top: 4px;
   color: var(--text);
-  font-size: 22px;
+  font-size: 20px;
   line-height: 1;
 }
 
@@ -1330,7 +1337,7 @@ h3 {
   gap: 8px;
   min-height: 38px;
   color: var(--text);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 750;
 }
 
@@ -1458,7 +1465,7 @@ h3 {
 .clientSessionBar strong {
   margin-top: 4px;
   color: var(--text);
-  font-size: 17px;
+  font-size: 16px;
 }
 
 .clientSessionBar small {
@@ -1511,7 +1518,7 @@ h3 {
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--text);
-  font-size: 16px;
+  font-size: 15px;
 }
 
 .clientOrderItemMeta {
@@ -1623,7 +1630,7 @@ h3 {
   align-items: start;
   padding: 12px;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.4;
 }
 
@@ -1940,6 +1947,7 @@ h3 {
   color: var(--text);
   background: var(--surface);
   outline: none;
+  font-size: 14px;
 }
 
 .detailSelector select:focus {
@@ -1971,6 +1979,8 @@ h3 {
   color: var(--muted);
   background: transparent;
   cursor: pointer;
+  font-size: 13px;
+  font-weight: 750;
 }
 
 .segmentedControl button:hover,
@@ -2008,6 +2018,7 @@ h3 {
   color: var(--text);
   background: transparent;
   outline: none;
+  font-size: 14px;
 }
 
 .filterBox {
@@ -2030,6 +2041,7 @@ h3 {
   color: var(--text);
   background: transparent;
   outline: none;
+  font-size: 14px;
 }
 
 .tableScroller {
@@ -2902,6 +2914,11 @@ tbody tr.selectedRow {
 
   .dashboard {
     padding: 20px 16px;
+  }
+
+  h1 {
+    font-size: 28px;
+    line-height: 1.14;
   }
 
   .topbar {

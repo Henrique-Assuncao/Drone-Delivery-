@@ -149,6 +149,9 @@ export interface Trip {
   totalDistance: number;
   estimatedDuration: number;
   averageDeliveryTime: number;
+  idealDispatchTime: string | null;
+  dispatchWindowOpen: boolean;
+  minutesUntilIdealDispatch: number;
   simulation?: TripSimulation;
 }
 

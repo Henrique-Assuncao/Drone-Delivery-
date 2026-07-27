@@ -20,8 +20,8 @@ Este documento mantém o histórico das decisões tomadas durante o desenvolvime
 | D005 | O alcance da viagem considerará ida e volta. | Decidida | Uma viagem só será válida se a distância total couber no alcance máximo do drone. |
 | D006 | Uma viagem poderá transportar vários pedidos. | Decidida | O agrupamento de pedidos será permitido quando peso e distância forem respeitados. |
 | D007 | O domínio aceitará uma lista de drones. | Decidida | A solução não ficará limitada a um único drone. |
-| D008 | Os pedidos serão processados por prioridade: alta, média e baixa. | Decidida | Pedidos de prioridade maior serão considerados antes dos demais. |
-| D009 | A redução do número de viagens será buscada dentro de cada grupo de prioridade. | Decidida | A otimização de viagens não deverá passar pedidos de prioridade menor na frente dos de prioridade maior. |
+| D008 | Pedidos com o mesmo horário confirmado serão processados por prioridade: alta, média e baixa. | Decidida | A prioridade continua relevante como desempate operacional após o prazo confirmado de entrega. |
+| D009 | A redução do número de viagens será buscada sem reutilizar o mesmo drone em múltiplas viagens planejadas na mesma rodada. | Decidida | A otimização evita sequenciar excedentes no mesmo drone quando a entrega exige outro drone imediato. |
 | D010 | Pacotes impossíveis de transportar serão marcados como não alocados com motivo. | Decidida | A simulação poderá continuar mesmo quando algum pedido não puder ser entregue. |
 | D011 | A primeira versão terá somente domínio e testes unitários. | Decidida | Não haverá CLI, API REST ou interface gráfica no primeiro ciclo. |
 | D012 | Funcionalidades opcionais não serão implementadas no primeiro ciclo. | Decidida | Bateria, obstáculos, cálculo de tempo, fila, estados, relatório, recarga e status ficam fora do escopo inicial. |
@@ -84,7 +84,7 @@ Este documento mantém o histórico das decisões tomadas durante o desenvolvime
 | D069 | Viagens em rota aceitam telemetria de bateria pelo endpoint `POST /api/trips/{id}/telemetry`. | Decidida | O retorno antecipado pode ser acionado por evento operacional antes da conclusão manual da viagem. |
 | D070 | O histórico de telemetria de uma viagem será consultável por `GET /api/trips/{id}/telemetry`. | Decidida | Operadores podem auditar as leituras recebidas durante a viagem. |
 | D071 | Viagens em rota confirmam entregas por posição com `POST /api/trips/{id}/route/{routePosition}/deliver` e código do cliente. | Decidida | O retorno antecipado passa a preservar somente entregas confirmadas pelo destinatário, sem inferir pedidos entregues pela bateria. |
-| D072 | A ordem automática de entregas usará prioridade, maior peso e menor distância da base. | Decidida | A análise deixa de depender apenas de fila ou menor rota geométrica e passa a refletir critérios operacionais dos pacotes. |
+| D072 | A ordem automática de entregas usará horário confirmado, prioridade, maior peso e menor distância da base. | Decidida | A análise deixa de depender apenas de fila ou menor rota geométrica e passa a refletir prazo e critérios operacionais dos pacotes. |
 | D073 | As respostas de viagem retornarão tempo estimado por pacote e tempo médio até entrega. | Decidida | O cliente passa a receber uma previsão por posição da rota e uma média da viagem. |
 | D074 | Clientes poderão avaliar o serviço com estrelas, título e feedback. | Decidida | A aplicação passa a registrar percepção simples do serviço sem depender de pedidos ou viagens neste ciclo. |
 | D075 | Viagens poderão ser avançadas por simulação automática de tempo. | Decidida | O sistema passa a mover drones, consumir bateria, parar em entregas alcançadas aguardando confirmação e encerrar ou retornar viagens conforme a rota. |
@@ -93,6 +93,11 @@ Este documento mantém o histórico das decisões tomadas durante o desenvolvime
 | D078 | A área Cliente exibirá aviso interativo com som quando o drone estiver chegando ao destino. | Decidida | O destinatário recebe um alerta mais difícil de ignorar antes da confirmação de recebimento. |
 | D079 | O admin poderá excluir drones sem viagem vinculada e fora de rota. | Decidida | A frota pode ser corrigida no cadastro sem remover histórico operacional nem drone em operação. |
 | D080 | Motivos de não alocação exibidos na API operacional e no cliente serão em português. | Decidida | O cliente recebe uma explicação apresentável, sem mensagens técnicas internas em inglês. |
+| D081 | O planejamento operacional priorizará pedidos com horário confirmado de entrega mais próximo. | Decidida | A ordenação passa a reduzir risco de atraso, usando prioridade, peso, distância e identificador como desempates. |
+| D082 | Cada drone disponível receberá no máximo uma viagem planejada por rodada. | Decidida | Excedentes que não couberem na viagem já planejada serão alocados imediatamente em outro drone disponível; sem drone imediato, o pedido fica não alocado com motivo específico. |
+| D083 | Novas viagens usarão o menor drone capaz de atender o pedido. | Decidida | A frota preserva drones de maior capacidade para encomendas que dependem deles, reduzindo não alocações evitáveis. |
+| D084 | Viagens planejadas antes da janela ideal de saída poderão receber novos pedidos. | Decidida | O sistema aproveita carga disponível sem antecipar a rota e sem exceder peso, alcance, bateria ou obstáculos. |
+| D085 | Viagens em rota ou planejadas com janela ideal de saída aberta serão tratadas como reservadas. | Decidida | O drone que já deve sair ou já saiu não recebe novos pacotes no planejamento seguinte. |
 
 ## Decisões técnicas
 
@@ -117,7 +122,7 @@ Este documento mantém o histórico das decisões tomadas durante o desenvolvime
 | T017 | A consulta JPA de viagens carregará drone e pedidos da rota junto com a viagem. | Decidida | Evita acesso lazy fora da transação com `spring.jpa.open-in-view=false`. |
 | T018 | Testes de integração usarão PostgreSQL local com schema temporário. | Decidida | A suite valida Spring Boot, JPA e Flyway sem reutilizar nem limpar tabelas do schema público de desenvolvimento. |
 | T019 | O contrato HTTP consolidado ficará em `API.md`. | Decidida | Endpoints, payloads, filtros, respostas e erros ficam documentados em um artefato dedicado, enquanto o README permanece focado em execucao e exemplos. |
-| T020 | A otimização de rota usará ordenação determinística por prioridade, peso, distância da base e identificador. | Decidida | A rota passa a refletir critérios operacionais dos pacotes e mantém resultado previsível para o cliente. |
+| T020 | A otimização de rota usará ordenação determinística por horário confirmado, prioridade, peso, distância da base e identificador. | Decidida | A rota passa a refletir prazo e critérios operacionais dos pacotes, mantendo resultado previsível para o cliente. |
 | T021 | Bateria será modelada inicialmente em percentual e consumo por quilômetro. | Decidida | O modelo fica simples para consulta e validação de segurança, usando `%` e `%/km` sem exigir unidade física real de energia neste ciclo. |
 | T022 | Tempo estimado usará `(distância total / velocidade) * 60`. | Decidida | A estimativa combina distância em km e velocidade em km/h para retornar duração em minutos, sem coluna nova no banco. |
 | T023 | Obstáculos começarão como zonas circulares em 2D. | Decidida | O primeiro modelo de desvio fica simples de validar e pode evoluir depois para polígonos ou zonas mais complexas. |
@@ -126,7 +131,7 @@ Este documento mantém o histórico das decisões tomadas durante o desenvolvime
 | T026 | Campos operacionais de bateria, velocidade e recarga foram adicionados à tabela `drones` com defaults. | Decidida | Drones existentes continuam válidos após a migration e novos cadastros podem omitir esses campos operacionais. |
 | T027 | A bateria mínima usa a fórmula `distância total * consumo + reserva mínima <= bateria atual`. | Decidida | A validação fica determinística e reaproveita a distância total da rota já otimizada. |
 | T028 | A fila de recarga será persistida nos próprios drones com `status`, `rechargeQueuedAt` e `rechargeReason`. | Decidida | A primeira versão da fila fica simples, ordenável e sem tabela ou broker adicional. |
-| T029 | A fila operacional de pedidos será persistida com `queuedAt` na tabela `orders`. | Decidida | O endpoint de fila e o modo `optimizeRoute=false` usam a mesma ordenação por `queuedAt` e `id`. |
+| T029 | A fila operacional de pedidos será persistida com `queuedAt` na tabela `orders`. | Decidida | `queuedAt` permanece como critério de desempate depois de horário confirmado e prioridade. |
 | T030 | Obstáculos serão persistidos na tabela `obstacles` e aplicados por desvio tangencial simples por trecho. | Decidida | A primeira versão evita pathfinding complexo, mas já torna distância, bateria e tempo sensíveis a zonas circulares. |
 | T031 | O retorno antecipado usa o progresso persistido em `trip_orders.delivered_at` para separar pedidos entregues dos pedidos pendentes. | Decidida | A regra evita inferir entregas pela bateria e mantém os pedidos restantes disponíveis para replanejamento. |
 | T032 | A telemetria de bateria atualiza o campo `batteryLevel` do drone associado à viagem. | Decidida | O drone mantém a última leitura operacional disponível para consultas e validações posteriores. |
@@ -167,6 +172,10 @@ Este documento mantém o histórico das decisões tomadas durante o desenvolvime
 | T067 | A aba Cliente terá `Meus pedidos` vinculada à conta autenticada. | Decidida | Com autenticação de cliente, a interface lista pedidos persistidos da conta e permite alternar o pedido acompanhado sem depender de códigos salvos no navegador. |
 | T068 | A documentação interativa do backend será gerada com Springdoc OpenAPI. | Decidida | O Swagger UI expõe a visão completa do backend, a API pública e a API interna, mantendo os esquemas de autenticação visíveis para teste manual. |
 | T069 | A aplicação usará unidades métricas explícitas no padrão brasileiro. | Decidida | Peso/capacidade ficam em kg; coordenadas, distância, alcance e raio em km; velocidade em km/h; bateria em %, consumo em %/km, recarga em %/min e tempos em min. |
+| T070 | O domínio `Order` armazenará `confirmedDeliveryTime` para ordenar planejamento em tempo hábil. | Decidida | O planejador consegue priorizar prazo sem depender da ordem recebida da persistência. |
+| T071 | A fila operacional será ordenada por `confirmedDeliveryTime`, prioridade, `queuedAt` e `id`. | Decidida | `GET /api/delivery-queue` e `optimizeRoute=false` passam a refletir urgência de entrega antes da ordem de entrada. |
+| T072 | A ordenação de drones no planejador será crescente por capacidade e alcance. | Decidida | A seleção first-fit passa a funcionar como best-fit simples para criar novas viagens sem desperdiçar drones maiores. |
+| T073 | A janela ideal de saída será derivada de `confirmedDeliveryTime - estimatedDeliveryTime` por pacote. | Decidida | `start`, simulação e planejamento persistido passam a compartilhar o mesmo cálculo temporal. |
 
 ## Decisões pendentes
 
@@ -258,3 +267,7 @@ Este documento mantém o histórico das decisões tomadas durante o desenvolvime
 - A experiência Cliente passou a exigir cadastro/login, com senha armazenada por hash PBKDF2 no backend, token assinado para sessão e pedidos vinculados à conta autenticada.
 - A aba `Meus pedidos` passou a listar pedidos persistidos da conta autenticada, substituindo a lista local de códigos salvos no navegador.
 - O backend passou a publicar documentação Swagger/OpenAPI em `/swagger-ui.html`, `/v3/api-docs` e `/v3/api-docs.yaml`, com grupos para API pública, API interna e backend completo.
+- O planejamento passou a priorizar `confirmedDeliveryTime` para atendimento em tempo hábil.
+- Uma rodada de planejamento passou a reservar cada drone disponível para no máximo uma viagem, enviando excedentes imediatamente para outro drone capaz.
+- A seleção de drone para nova viagem passou a preferir o menor drone capaz, preservando capacidade para pedidos mais pesados.
+- Viagens planejadas passaram a calcular janela ideal de saída e podem receber novos pedidos antes dessa janela quando a rota recalculada continua dentro dos limites do drone.
