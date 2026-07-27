@@ -6,6 +6,57 @@ Simular o planejamento de entregas feitas por drones em uma cidade representada 
 
 O sistema recebe drones e pedidos no domínio, monta viagens respeitando peso, alcance, prioridade, base fixa e retorno para a base, e separa pedidos que nao podem ser alocados.
 
+## Roteiro rápido de avaliação
+
+1. Suba o banco de dados:
+
+```sh
+docker compose up -d
+```
+
+2. Inicie o backend:
+
+```sh
+mvn spring-boot:run
+```
+
+3. Em outro terminal, inicie o dashboard:
+
+```sh
+cd frontend
+npm install
+npm run dev
+```
+
+4. Acesse o dashboard:
+
+```text
+http://127.0.0.1:5173
+```
+
+Quando o banco estiver vazio, a aplicação cria automaticamente um cenário demo inicial com exemplos das funcionalidades principais. No painel Admin, o botão `Restaurar demo` recria esse cenário a qualquer momento.
+
+5. Para avaliar a área do cliente, use as credenciais demo:
+
+```text
+E-mail: cliente.demo@drone.local
+Senha: senha123
+```
+
+6. Para consultar a documentação interativa da API:
+
+```text
+http://localhost:8080/swagger-ui.html
+```
+
+7. Para validar os testes automatizados:
+
+```sh
+mvn test
+cd frontend
+npm test
+```
+
 ## Unidades de medida
 
 A aplicação usa o padrão métrico adotado no Brasil:
